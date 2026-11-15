@@ -25,7 +25,6 @@ const DOMAIN_SELECTORS = {
       '.book-author',
       '.author',
       '[rel="author"]',
-      '[class*="author"]',
       'meta[name="author"]',
     ],
     cover: [

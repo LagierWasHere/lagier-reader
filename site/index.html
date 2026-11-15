@@ -111,7 +111,9 @@
           try {
             const data = await request(`/library?userId=${encodeURIComponent(userId)}`);
             const list = Array.isArray(data) ? data : data.novels || [];
-            setNovels(list); localStorage.setItem(`lr_cache_${userId}`, JSON.stringify(list));
+            setNovels(list);
+            setActive((current) => current ? list.find((item) => item.url === current.url) || current : current);
+            localStorage.setItem(`lr_cache_${userId}`, JSON.stringify(list));
           } catch (error) {
             const cached = readJSON(`lr_cache_${userId}`, null);
             if (cached) setNovels(cached); else setAuthError(error.message);

@@ -39,7 +39,17 @@ function getRequiredUrl(value, fieldName) {
   }
 
   try {
-    const url = new URL(value.trim());
+    let rawUrl = value.trim().replace(/&amp;/gi, '&');
+    if (rawUrl.startsWith('//')) {
+      rawUrl = `https:${rawUrl}`;
+    } else if (
+      /^(?:www\.)?(?:novelphoenix|royalroad|chikari)\.[a-z]{2,}(?:[/:?#]|$)/i.test(
+        rawUrl,
+      )
+    ) {
+      rawUrl = `https://${rawUrl}`;
+    }
+    const url = new URL(rawUrl);
     if (!['http:', 'https:'].includes(url.protocol)) {
       throw new Error();
     }
@@ -259,7 +269,10 @@ async function resolveChapterUrl(req, rawUrl) {
     const novelUrl = req.query?.novelUrl;
     if (typeof novelUrl === 'string' && novelUrl.trim()) {
       try {
-        return getRequiredUrl(new URL(rawUrl, novelUrl).toString(), 'url');
+        return getRequiredUrl(
+          new URL(rawUrl.trim(), getRequiredUrl(novelUrl, 'novelUrl')).toString(),
+          'url',
+        );
       } catch {
         // Continue by checking stored novels for a matching relative chapter.
       }
