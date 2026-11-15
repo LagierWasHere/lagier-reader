@@ -23,15 +23,14 @@ function respond(res, body, status = 200) {
 }
 
 function getBody(req) {
-  if (!req.bodyRaw) {
+  if (!req.bodyRaw || !String(req.bodyRaw).trim()) {
     return {};
   }
 
   try {
-    const body = req.bodyJson;
-    return body && typeof body === 'object' ? body : {};
+    return JSON.parse(req.bodyRaw);
   } catch {
-    return {};
+    throw new HttpError(400, 'Request body must be valid JSON');
   }
 }
 
