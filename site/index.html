@@ -145,12 +145,13 @@
       .library-count { color: var(--muted); font-size: 12px; }
       .library-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
         gap: 12px;
       }
       .novel-card {
         display: flex;
-        min-height: 205px;
+        flex-direction: column;
+        min-height: 390px;
         overflow: hidden;
         border: 1px solid var(--line);
         border-radius: 9px;
@@ -159,8 +160,9 @@
       }
       .novel-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
       .novel-cover {
-        width: 92px;
-        flex: 0 0 92px;
+        width: 100%;
+        height: 170px;
+        flex: 0 0 170px;
         object-fit: cover;
         background: #1b1b1b;
       }
@@ -184,8 +186,27 @@
         -webkit-line-clamp: 3;
       }
       .novel-author { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+      .novel-synopsis {
+        display: -webkit-box;
+        overflow: hidden;
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+      }
+      .novel-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+      .novel-tag {
+        padding: 3px 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 10px;
+      }
       .novel-meta { margin-top: auto; color: #686868; font-size: 11px; }
-      .novel-card .button { align-self: flex-start; margin-top: 12px; }
+      .novel-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .novel-actions .button { flex: 1 1 auto; }
       .empty-state {
         padding: 56px 20px;
         border: 1px dashed var(--line);
@@ -458,23 +479,41 @@
           }
           $("#library-grid").innerHTML = state.library.map((novel, index) => {
             const chapters = novel.chapters || [];
-            const position = Math.min(chapterPosition(novel), Math.max(chapters.length - 1, 0));
+            const hasProgress = Boolean(novel.lastReadChapterUrl);
             const cover = novel.coverImageUrl
               ? `<img class="novel-cover" src="${escapeHtml(novel.coverImageUrl)}" alt="" loading="lazy">`
               : `<div class="novel-cover is-empty" aria-hidden="true">LR</div>`;
+            const tags = (novel.tags || []).slice(0, 5).map((tag) =>
+              `<span class="novel-tag">${escapeHtml(tag)}</span>`).join("");
             return `
               <article class="novel-card">
                 ${cover}
                 <div class="novel-card-body">
                   <h3 class="novel-title">${escapeHtml(novel.title || "Untitled novel")}</h3>
                   <p class="novel-author">${escapeHtml(novel.author || "Unknown author")}</p>
+                  ${novel.synopsis ? `<p class="novel-synopsis">${escapeHtml(novel.synopsis)}</p>` : ""}
+                  ${tags ? `<div class="novel-tags">${tags}</div>` : ""}
                   <div class="novel-meta">${chapters.length} ${chapters.length === 1 ? "chapter" : "chapters"}</div>
-                  <button class="button button-primary continue-button" type="button" data-index="${index}" ${chapters.length ? "" : "disabled"}>Continue Reading</button>
+                  <div class="novel-actions">
+                    <button class="button button-primary continue-button" type="button" data-index="${index}" ${chapters.length ? "" : "disabled"}>${hasProgress ? "Continue" : "Start reading"}</button>
+                    ${hasProgress && chapters.length ? `<button class="button start-over-button" type="button" data-index="${index}">Start over</button>` : ""}
+                    <button class="button edit-button" type="button" data-index="${index}">Edit</button>
+                    <button class="button delete-button" type="button" data-index="${index}">Delete</button>
+                  </div>
                 </div>
               </article>`;
           }).join("");
           document.querySelectorAll(".continue-button").forEach((button) => {
-            button.addEventListener("click", () => openNovel(state.library[Number(button.dataset.index)]));
+            button.addEventListener("click", () => openNovel(state.library[Number(button.dataset.index)], true));
+          });
+          document.querySelectorAll(".start-over-button").forEach((button) => {
+            button.addEventListener("click", () => openNovel(state.library[Number(button.dataset.index)], false));
+          });
+          document.querySelectorAll(".edit-button").forEach((button) => {
+            button.addEventListener("click", () => refreshNovel(Number(button.dataset.index)));
+          });
+          document.querySelectorAll(".delete-button").forEach((button) => {
+            button.addEventListener("click", () => deleteNovel(Number(button.dataset.index)));
           });
         }
 
@@ -507,7 +546,7 @@
               novel = await api("/novel", { method: "POST", body: JSON.stringify({ url }) });
             } catch (remoteError) {
               if (!window.confirm(`The scraper API is unavailable. Save this URL for later?\n\n${remoteError.message}`)) throw remoteError;
-              novel = { url, title: new URL(url).hostname, author: "", chapters: [] };
+              novel = { url, title: new URL(url).hostname, author: "", synopsis: "", tags: [], chapters: [] };
             }
             const existing = state.library.findIndex((item) => item.url === novel.url);
             if (existing >= 0) state.library[existing] = novel;
@@ -522,6 +561,45 @@
             button.disabled = false;
             button.textContent = "Add novel";
           }
+        }
+
+        async function refreshNovel(index) {
+          const current = state.library[index];
+          if (!current) return;
+          const enteredUrl = window.prompt("Novel URL", current.url);
+          if (!enteredUrl) return;
+
+          try {
+            const novel = await api("/novel", {
+              method: "POST",
+              body: JSON.stringify({ url: enteredUrl.trim() }),
+            });
+            state.library.splice(index, 1);
+            state.library.unshift(novel);
+            saveLocalLibrary();
+            renderLibrary();
+            showToast("Novel refreshed.");
+          } catch (error) {
+            showToast(`Could not refresh novel: ${error.message}`);
+          }
+        }
+
+        async function deleteNovel(index) {
+          const novel = state.library[index];
+          if (!novel || !window.confirm(`Remove "${novel.title || "this novel"}" from your library?`)) return;
+
+          try {
+            await api(`/novel?url=${encodeURIComponent(novel.url)}`, { method: "DELETE" });
+          } catch (error) {
+            if (!window.confirm(`The server could not remove this novel (${error.message}). Remove the local copy anyway?`)) {
+              return;
+            }
+          }
+
+          state.library.splice(index, 1);
+          saveLocalLibrary();
+          renderLibrary();
+          showToast("Novel removed.");
         }
 
         async function getChapter(url) {
@@ -575,7 +653,7 @@
           }
         }
 
-        function openNovel(novel) {
+        function openNovel(novel, resume = true) {
           if (!novel?.chapters?.length) {
             showToast("This novel has no chapters yet.");
             return;
@@ -585,7 +663,7 @@
           $("#reader-novel-label").textContent = novel.title || novel.url;
           libraryView.hidden = true;
           readerView.hidden = false;
-          openChapter(chapterPosition(novel));
+          openChapter(resume ? chapterPosition(novel) : 0);
         }
 
         function showLibrary() {

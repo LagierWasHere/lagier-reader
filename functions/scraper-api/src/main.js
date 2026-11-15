@@ -7,7 +7,7 @@ const { scrapeChapter, scrapeNovel } = require('./scrapers');
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -43,6 +43,48 @@ function getRequiredUrl(value, fieldName) {
     throw new HttpError(400, `${fieldName} is required`);
   }
 
+  function normalizeChapters(chapters, novelUrl) {
+    if (!Array.isArray(chapters)) {
+      return [];
+    }
+
+    return chapters
+      .map((chapter) => {
+        if (!chapter || typeof chapter !== 'object' || typeof chapter.url !== 'string') {
+          return null;
+        }
+
+        try {
+          const url = new URL(chapter.url, novelUrl);
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            return null;
+          }
+          return { ...chapter, url: url.toString() };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }
+
+  async function normalizeNovelDocument(novels, novel) {
+    if (!novel) {
+      return novel;
+    }
+
+    const chapters = normalizeChapters(novel.chapters, novel.url);
+    const changed =
+      chapters.length !== (novel.chapters || []).length ||
+      chapters.some((chapter, index) => chapter.url !== novel.chapters[index]?.url);
+
+    if (!changed) {
+      return novel;
+    }
+
+    await novels.updateOne({ _id: novel._id }, { $set: { chapters, updatedAt: new Date() } });
+    return { ...novel, chapters, updatedAt: new Date() };
+  }
+
   try {
     const url = new URL(value.trim());
     if (!['http:', 'https:'].includes(url.protocol)) {
@@ -67,7 +109,10 @@ function getPath(req) {
 async function getLibrary(res) {
   const novels = await getNovelsCollection();
   const documents = await novels.find({}).sort({ updatedAt: -1 }).toArray();
-  return respond(res, documents);
+  const normalizedDocuments = await Promise.all(
+    documents.map((novel) => normalizeNovelDocument(novels, novel)),
+  );
+  return respond(res, normalizedDocuments);
 }
 
 async function saveNovel(req, res) {
@@ -85,7 +130,9 @@ async function saveNovel(req, res) {
         title: metadata.title,
         author: metadata.author,
         coverImageUrl: metadata.coverImageUrl,
-        chapters: metadata.chapters,
+        synopsis: metadata.synopsis || '',
+        tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+        chapters: normalizeChapters(metadata.chapters, url),
         updatedAt: now,
       },
       $setOnInsert: {
@@ -101,8 +148,50 @@ async function saveNovel(req, res) {
   return respond(res, result);
 }
 
-async function getChapter(req, res) {
+async function deleteNovel(req, res) {
   const url = getRequiredUrl(req.query?.url, 'url');
+  const novels = await getNovelsCollection();
+  const result = await novels.deleteOne({ url });
+
+  if (!result.deletedCount) {
+    throw new HttpError(404, 'Novel not found');
+  }
+
+  return respond(res, { deleted: true, url });
+}
+
+async function resolveChapterUrl(req, rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    throw new HttpError(400, 'url is required');
+  }
+
+  try {
+    return getRequiredUrl(rawUrl, 'url');
+  } catch (error) {
+    const novelUrl = req.query?.novelUrl;
+    if (typeof novelUrl === 'string' && novelUrl.trim()) {
+      try {
+        return getRequiredUrl(new URL(rawUrl, novelUrl).toString(), 'url');
+      } catch {
+        // Continue by checking stored novels for a matching relative chapter.
+      }
+    }
+
+    const novels = await getNovelsCollection();
+    const novel = await novels.findOne({ 'chapters.url': rawUrl.trim() });
+    if (novel) {
+      const chapter = (novel.chapters || []).find((item) => item.url === rawUrl.trim());
+      if (chapter) {
+        return getRequiredUrl(new URL(chapter.url, novel.url).toString(), 'url');
+      }
+    }
+
+    throw error;
+  }
+}
+
+async function getChapter(req, res) {
+  const url = await resolveChapterUrl(req, req.query?.url);
   const chapters = await getChaptersCollection();
   const cachedChapter = await chapters.findOne({ url });
 
@@ -188,6 +277,9 @@ async function handleRequest(req, res) {
   }
   if (req.method === 'POST' && path === '/novel') {
     return saveNovel(req, res);
+  }
+  if (req.method === 'DELETE' && path === '/novel') {
+    return deleteNovel(req, res);
   }
   if (req.method === 'GET' && path === '/chapter') {
     return getChapter(req, res);

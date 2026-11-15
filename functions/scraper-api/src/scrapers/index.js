@@ -9,6 +9,8 @@ const DOMAIN_SELECTORS = {
     title: ['.fic-title h1', '.fiction-header h1', 'h1'],
     author: ['.fic-title h2 a', '.fiction-header a[href*="/profile/"]', '[rel="author"]'],
     cover: ['.fiction-cover img', '.fiction-header img', 'meta[property="og:image"]'],
+    synopsis: ['.description', '.fiction-description', 'meta[name="description"]'],
+    tags: ['.tags a', '.fiction-tags a', '[rel="tag"]'],
     chapters: [
       '.chapter-row a[href]',
       '#chapters a[href*="/chapter/"]',
@@ -33,6 +35,14 @@ const DOMAIN_SELECTORS = {
       'meta[property="og:image"]',
       'meta[name="twitter:image"]',
     ],
+    synopsis: [
+      '.synopsis',
+      '.summary',
+      '.description',
+      '.book-description',
+      'meta[name="description"]',
+    ],
+    tags: ['.tags a', '.genres a', '.genre a', '[rel="tag"]'],
     chapters: [
       '.chapter-list a[href]',
       '.chapters a[href]',
@@ -56,6 +66,8 @@ const DOMAIN_SELECTORS = {
     title: ['.novel-title', '.book-title', 'h1'],
     author: ['.novel-author', '.book-author', '[rel="author"]', '[class*="author"]'],
     cover: ['.novel-cover img', '.book-cover img', 'meta[property="og:image"]'],
+    synopsis: ['.synopsis', '.summary', '.description', 'meta[name="description"]'],
+    tags: ['.tags a', '.genres a', '.genre a', '[rel="tag"]'],
     chapters: [
       '.chapter-list a[href]',
       '.chapter-list-item a[href]',
@@ -72,6 +84,14 @@ const DOMAIN_SELECTORS = {
       'img[class*="cover"]',
       '.cover img',
     ],
+    synopsis: [
+      '.synopsis',
+      '.summary',
+      '.description',
+      '.book-description',
+      'meta[name="description"]',
+    ],
+    tags: ['.tags a', '.genres a', '.genre a', '[rel="tag"]'],
     chapters: [
       '.chapter-list a[href]',
       '.chapters a[href]',
@@ -125,7 +145,16 @@ function toAbsoluteUrl(value, baseUrl) {
   }
 
   try {
-    return new URL(value, baseUrl).href;
+    const rawValue = value.trim();
+    if (!rawValue || rawValue.startsWith('#') || rawValue.toLowerCase().startsWith('javascript:')) {
+      return null;
+    }
+
+    const absoluteUrl = new URL(rawValue, baseUrl);
+    if (!['http:', 'https:'].includes(absoluteUrl.protocol)) {
+      return null;
+    }
+    return absoluteUrl.toString();
   } catch {
     return null;
   }
@@ -160,6 +189,24 @@ function getCoverUrl($, selectors, baseUrl) {
     }
   }
   return null;
+}
+
+function getTags($, selectors = []) {
+  const tags = [];
+  const seen = new Set();
+
+  for (const selector of selectors) {
+    $(selector).each((_, element) => {
+      const tag = $(element).text().replace(/\s+/g, ' ').trim();
+      const key = tag.toLowerCase();
+      if (tag && !seen.has(key)) {
+        seen.add(key);
+        tags.push(tag);
+      }
+    });
+  }
+
+  return tags;
 }
 
 function parseChapterNumber(title, url, fallback) {
@@ -284,11 +331,17 @@ async function scrapeNovel(url) {
     getFirstValue($, ['title']) ||
     '';
   const author = getFirstValue($, selectors.author, 'content') || '';
+  const synopsis =
+    getFirstValue($, selectors.synopsis || [], 'content') ||
+    getFirstValue($, ['meta[name="description"]'], 'content') ||
+    '';
 
   return {
     title,
     author,
     coverImageUrl: getCoverUrl($, selectors.cover, page.url),
+    synopsis,
+    tags: getTags($, selectors.tags),
     chapters: parseChapters($, selectors.chapters, page.url),
   };
 }
