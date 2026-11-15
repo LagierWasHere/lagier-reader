@@ -8,7 +8,7 @@ const { scrapeChapter, scrapeNovel } = require('./scrapers');
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-User-Id',
 };
 
 class HttpError extends Error {
@@ -43,48 +43,6 @@ function getRequiredUrl(value, fieldName) {
     throw new HttpError(400, `${fieldName} is required`);
   }
 
-  function normalizeChapters(chapters, novelUrl) {
-    if (!Array.isArray(chapters)) {
-      return [];
-    }
-
-    return chapters
-      .map((chapter) => {
-        if (!chapter || typeof chapter !== 'object' || typeof chapter.url !== 'string') {
-          return null;
-        }
-
-        try {
-          const url = new URL(chapter.url, novelUrl);
-          if (!['http:', 'https:'].includes(url.protocol)) {
-            return null;
-          }
-          return { ...chapter, url: url.toString() };
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-  }
-
-  async function normalizeNovelDocument(novels, novel) {
-    if (!novel) {
-      return novel;
-    }
-
-    const chapters = normalizeChapters(novel.chapters, novel.url);
-    const changed =
-      chapters.length !== (novel.chapters || []).length ||
-      chapters.some((chapter, index) => chapter.url !== novel.chapters[index]?.url);
-
-    if (!changed) {
-      return novel;
-    }
-
-    await novels.updateOne({ _id: novel._id }, { $set: { chapters, updatedAt: new Date() } });
-    return { ...novel, chapters, updatedAt: new Date() };
-  }
-
   try {
     const url = new URL(value.trim());
     if (!['http:', 'https:'].includes(url.protocol)) {
@@ -94,6 +52,68 @@ function getRequiredUrl(value, fieldName) {
   } catch {
     throw new HttpError(400, `${fieldName} must be a valid HTTP(S) URL`);
   }
+}
+
+function getUserId(req, body = getBody(req)) {
+  const headerUserId =
+    req.headers?.['x-user-id'] ||
+    req.headers?.['X-User-Id'] ||
+    req.headers?.['X-User-ID'];
+  const queryUserId = req.query?.userId;
+  const userId = headerUserId || queryUserId || body.userId || 'guest_local';
+
+  if (typeof userId !== 'string' || !userId.trim()) {
+    throw new HttpError(400, 'userId must be a non-empty string');
+  }
+
+  return userId.trim();
+}
+
+function normalizeChapters(chapters, novelUrl) {
+  if (!Array.isArray(chapters)) {
+    return [];
+  }
+
+  return chapters
+    .map((chapter) => {
+      if (!chapter || typeof chapter !== 'object' || typeof chapter.url !== 'string') {
+        return null;
+      }
+
+      try {
+        const url = new URL(chapter.url, novelUrl);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          return null;
+        }
+        return { ...chapter, url: url.toString() };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+async function normalizeNovelDocument(novels, novel, userId) {
+  if (!novel) {
+    return novel;
+  }
+
+  const chapters = normalizeChapters(novel.chapters, novel.url);
+  const changed =
+    novel.userId !== userId ||
+    chapters.length !== (novel.chapters || []).length ||
+    chapters.some((chapter, index) => chapter.url !== novel.chapters[index]?.url);
+
+  if (!changed) {
+    return novel;
+  }
+
+  const updatedAt = new Date();
+  await novels.updateOne(
+    { _id: novel._id },
+    { $set: { userId, chapters, updatedAt } },
+  );
+  return { ...novel, userId, chapters, updatedAt };
 }
 
 function getPath(req) {
@@ -106,30 +126,45 @@ function getPath(req) {
   return routeIndex >= 0 ? `/${pathParts.slice(routeIndex).join('/')}` : rawPath;
 }
 
-async function getLibrary(res) {
+async function getLibrary(req, res) {
   const novels = await getNovelsCollection();
-  const documents = await novels.find({}).sort({ updatedAt: -1 }).toArray();
+  const userId = getUserId(req);
+  const filter =
+    userId === 'guest_local'
+      ? { $or: [{ userId }, { userId: { $exists: false } }] }
+      : { userId };
+  const documents = await novels
+    .find(filter)
+    .sort({ updatedAt: -1 })
+    .toArray();
   const normalizedDocuments = await Promise.all(
-    documents.map((novel) => normalizeNovelDocument(novels, novel)),
+    documents.map((novel) => normalizeNovelDocument(novels, novel, userId)),
   );
-  return respond(res, normalizedDocuments);
+  return respond(res, { novels: normalizedDocuments });
 }
 
 async function saveNovel(req, res) {
   const body = getBody(req);
+  const userId = getUserId(req, body);
   const url = getRequiredUrl(body.url, 'url');
   const metadata = await scrapeNovel(url);
   const now = new Date();
   const novels = await getNovelsCollection();
+  const legacyNovel =
+    userId === 'guest_local'
+      ? await novels.findOne({ url, userId: { $exists: false } })
+      : null;
 
   const result = await novels.findOneAndUpdate(
-    { url },
+    legacyNovel ? { _id: legacyNovel._id } : { userId, url },
     {
       $set: {
+        userId,
         url,
         title: metadata.title,
         author: metadata.author,
         coverImageUrl: metadata.coverImageUrl,
+        cover: metadata.coverImageUrl,
         synopsis: metadata.synopsis || '',
         tags: Array.isArray(metadata.tags) ? metadata.tags : [],
         chapters: normalizeChapters(metadata.chapters, url),
@@ -149,9 +184,11 @@ async function saveNovel(req, res) {
 }
 
 async function deleteNovel(req, res) {
-  const url = getRequiredUrl(req.query?.url, 'url');
+  const body = getBody(req);
+  const userId = getUserId(req, body);
+  const url = getRequiredUrl(req.query?.url || body.url, 'url');
   const novels = await getNovelsCollection();
-  const result = await novels.deleteOne({ url });
+  const result = await novels.deleteOne({ userId, url });
 
   if (!result.deletedCount) {
     throw new HttpError(404, 'Novel not found');
@@ -191,6 +228,7 @@ async function resolveChapterUrl(req, rawUrl) {
 }
 
 async function getChapter(req, res) {
+  getUserId(req);
   const url = await resolveChapterUrl(req, req.query?.url);
   const chapters = await getChaptersCollection();
   const cachedChapter = await chapters.findOne({ url });
@@ -226,6 +264,7 @@ async function getChapter(req, res) {
 
 async function updateProgress(req, res) {
   const body = getBody(req);
+  const userId = getUserId(req, body);
   const novelUrl = getRequiredUrl(body.novelUrl || body.url, 'novelUrl');
 
   if (
@@ -246,11 +285,14 @@ async function updateProgress(req, res) {
   );
   const novels = await getNovelsCollection();
   const result = await novels.findOneAndUpdate(
-    { url: novelUrl },
+    { userId, url: novelUrl },
     {
       $set: {
         lastReadChapterUrl,
         lastReadChapterTitle: body.lastReadChapterTitle.trim(),
+        ...(Number.isInteger(body.lastReadIndex) && body.lastReadIndex >= 0
+          ? { lastReadIndex: body.lastReadIndex }
+          : {}),
         updatedAt: new Date(),
       },
     },
@@ -273,7 +315,7 @@ async function handleRequest(req, res) {
   const path = getPath(req);
 
   if (req.method === 'GET' && path === '/library') {
-    return getLibrary(res);
+    return getLibrary(req, res);
   }
   if (req.method === 'POST' && path === '/novel') {
     return saveNovel(req, res);
@@ -298,7 +340,7 @@ module.exports = async ({ req, res, log, error }) => {
     const status = caughtError.status || 500;
     const message = status === 500 ? 'Internal server error' : caughtError.message;
 
-    error(caughtError.message);
+    error(caughtError.stack || caughtError.message);
     log(`${req.method} ${req.path || '/'} failed with status ${status}`);
     return respond(res, { error: message }, status);
   }
