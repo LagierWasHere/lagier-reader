@@ -1,758 +1,175 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark light" />
-    <title>Lagier Reader</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <title>read.lagierr.me</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Lora:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>if (window.tailwind) tailwind.config = { darkMode: "class", theme: { extend: { fontFamily: { sans: ["Plus Jakarta Sans", "system-ui"], serif: ["Lora", "Georgia", "serif"], mono: ["JetBrains Mono", "monospace"] }, colors: { void: "#000" } } } };</script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/appwrite@16.0.2"></script>
     <style>
-      :root {
-        --bg: #0a0a0a;
-        --panel: #111;
-        --panel-strong: #171717;
-        --text: #f3f3f3;
-        --muted: #8d8d8d;
-        --line: #272727;
-        --accent: #c9ff55;
-        --accent-ink: #101500;
-        --reading-bg: #0a0a0a;
-        --reading-text: #e8e8e8;
-        --reading-width: 760px;
-        --font-reading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        color: var(--text);
-        background: var(--bg);
-        font-synthesis: none;
-        text-rendering: optimizeLegibility;
-      }
-
-      * { box-sizing: border-box; }
-      html { background: var(--bg); }
-      body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); }
-      button, input, select { font: inherit; }
-      button { cursor: pointer; }
-      button:focus-visible, input:focus-visible, select:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-
-      .app-shell { min-height: 100vh; }
-      .topbar {
-        position: sticky;
-        top: 0;
-        z-index: 20;
-        display: flex;
-        align-items: center;
-        gap: 20px;
-        min-height: 64px;
-        padding: 12px clamp(16px, 4vw, 52px);
-        border-bottom: 1px solid var(--line);
-        background: color-mix(in srgb, var(--bg) 92%, transparent);
-        backdrop-filter: blur(16px);
-      }
-      .brand {
-        display: inline-flex;
-        align-items: center;
-        gap: 9px;
-        flex: 0 0 auto;
-        color: var(--text);
-        font-size: 15px;
-        font-weight: 800;
-        letter-spacing: -.02em;
-        text-decoration: none;
-      }
-      .brand-mark {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: var(--accent);
-        box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 70%, transparent);
-      }
-      .url-form { display: flex; flex: 1; gap: 8px; max-width: 760px; margin: auto; }
-      .url-form input {
-        width: 100%;
-        min-width: 0;
-        height: 38px;
-        padding: 0 13px;
-        border: 1px solid var(--line);
-        border-radius: 7px;
-        background: var(--panel);
-        color: var(--text);
-        font-size: 13px;
-      }
-      .url-form input::placeholder { color: #686868; }
-      .api-settings { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; white-space: nowrap; }
-      .api-settings input {
-        width: 170px;
-        height: 30px;
-        padding: 0 8px;
-        border: 1px solid var(--line);
-        border-radius: 5px;
-        background: var(--panel);
-        color: var(--text);
-        font-size: 10px;
-      }
-      .api-settings .button { min-height: 30px; padding: 0 8px; font-size: 10px; }
-      .button {
-        min-height: 38px;
-        padding: 0 14px;
-        border: 1px solid var(--line);
-        border-radius: 7px;
-        background: transparent;
-        color: var(--text);
-        font-size: 12px;
-        font-weight: 700;
-        white-space: nowrap;
-      }
-      .button:hover { border-color: #555; background: var(--panel-strong); }
-      .button-primary {
-        border-color: var(--accent);
-        background: var(--accent);
-        color: var(--accent-ink);
-      }
-      .button-primary:hover { border-color: #dcff8c; background: #dcff8c; }
-      .button-quiet { border-color: transparent; color: var(--muted); }
-      .button-quiet:hover { color: var(--text); }
-
-      main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
-      .view { padding: clamp(30px, 6vw, 76px) 0 90px; }
-      .view[hidden] { display: none; }
-      .eyebrow {
-        margin: 0 0 10px;
-        color: var(--accent);
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: .13em;
-        text-transform: uppercase;
-      }
-      h1, h2, p { margin-top: 0; }
-      h1 {
-        max-width: 750px;
-        margin-bottom: 12px;
-        font-size: clamp(34px, 6vw, 68px);
-        line-height: .98;
-        letter-spacing: -.065em;
-      }
-      .subhead { max-width: 520px; color: var(--muted); font-size: 15px; line-height: 1.6; }
-      .library-toolbar {
-        display: flex;
-        align-items: end;
-        justify-content: space-between;
-        gap: 20px;
-        margin-bottom: 25px;
-      }
-      .library-toolbar h2 { margin: 0; font-size: 20px; letter-spacing: -.03em; }
-      .library-count { color: var(--muted); font-size: 12px; }
-      .library-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
-        gap: 12px;
-      }
-      .novel-card {
-        display: flex;
-        flex-direction: column;
-        min-height: 390px;
-        overflow: hidden;
-        border: 1px solid var(--line);
-        border-radius: 9px;
-        background: var(--panel);
-        transition: border-color .15s ease, transform .15s ease;
-      }
-      .novel-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
-      .novel-cover {
-        width: 100%;
-        height: 170px;
-        flex: 0 0 170px;
-        object-fit: cover;
-        background: #1b1b1b;
-      }
-      .novel-cover.is-empty {
-        display: grid;
-        place-items: center;
-        padding: 12px;
-        color: #5b5b5b;
-        font-size: 22px;
-        font-weight: 800;
-      }
-      .novel-card-body { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 15px; }
-      .novel-title {
-        display: -webkit-box;
-        overflow: hidden;
-        margin: 0 0 6px;
-        font-size: 15px;
-        line-height: 1.25;
-        letter-spacing: -.02em;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
-      }
-      .novel-author { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
-      .novel-synopsis {
-        display: -webkit-box;
-        overflow: hidden;
-        margin: 0 0 10px;
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.45;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
-      }
-      .novel-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
-      .novel-tag {
-        padding: 3px 6px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        color: var(--muted);
-        font-size: 10px;
-      }
-      .novel-meta { margin-top: auto; color: #686868; font-size: 11px; }
-      .novel-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-      .novel-actions .button { flex: 1 1 auto; }
-      .empty-state {
-        padding: 56px 20px;
-        border: 1px dashed var(--line);
-        border-radius: 9px;
-        color: var(--muted);
-        text-align: center;
-      }
-
-      .reader-view { width: 100%; padding-top: 24px; }
-      .reader-shell { width: min(var(--reading-width), calc(100% - 32px)); margin: auto; }
-      .reader-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 15px;
-        padding-bottom: 22px;
-      }
-      .reader-top .button { padding-inline: 0; border: 0; }
-      .reader-top .button:hover { background: none; }
-      .reader-label { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-      .reader-controls {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px;
-        margin: 0 auto 34px;
-        padding: 9px;
-        border: 1px solid var(--line);
-        border-radius: 9px;
-        background: var(--panel);
-      }
-      .control-group { display: flex; align-items: center; gap: 4px; }
-      .control-label { margin: 0 5px 0 7px; color: var(--muted); font-size: 11px; }
-      .control-select, .control-button {
-        height: 30px;
-        padding: 0 9px;
-        border: 1px solid transparent;
-        border-radius: 5px;
-        background: transparent;
-        color: var(--text);
-        font-size: 12px;
-      }
-      .control-select { border-color: var(--line); }
-      .control-button:hover, .control-button.is-active { background: var(--panel-strong); color: var(--accent); }
-      .chapter-heading { margin-bottom: 34px; }
-      .chapter-heading h1 { max-width: none; margin-bottom: 9px; font-size: clamp(28px, 5vw, 48px); letter-spacing: -.055em; }
-      .chapter-heading p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
-      .chapter-content {
-        color: var(--reading-text);
-        font-family: var(--font-reading);
-        font-size: 18px;
-        line-height: 1.82;
-        overflow-wrap: anywhere;
-      }
-      .chapter-content img { display: block; max-width: 100%; height: auto; margin: 24px auto; }
-      .chapter-content p { margin: 0 0 1.35em; }
-      .chapter-content h1, .chapter-content h2, .chapter-content h3 {
-        margin: 1.8em 0 .7em;
-        font-size: 1.25em;
-        letter-spacing: -.03em;
-      }
-      .chapter-content blockquote {
-        margin: 1.4em 0;
-        padding-left: 18px;
-        border-left: 2px solid var(--accent);
-        color: #b7b7b7;
-      }
-      .reader-footer { display: flex; justify-content: space-between; gap: 10px; padding: 45px 0 20px; }
-      .reader-footer .button { max-width: 48%; overflow: hidden; text-overflow: ellipsis; }
-      .reader-footer .button[disabled] { opacity: .35; cursor: default; }
-      .loading { color: var(--muted); }
-      .toast {
-        position: fixed;
-        right: 18px;
-        bottom: 18px;
-        z-index: 50;
-        max-width: min(360px, calc(100vw - 36px));
-        padding: 11px 14px;
-        border: 1px solid var(--line);
-        border-radius: 7px;
-        background: #191919;
-        color: var(--text);
-        font-size: 12px;
-        box-shadow: 0 8px 30px #0008;
-      }
-      .toast[hidden] { display: none; }
-
-      body.theme-sepia { --reading-bg: #efe2c4; --reading-text: #493c2c; --bg: #efe2c4; --text: #493c2c; --panel: #e6d6b5; --panel-strong: #dcc9a6; --line: #c6b48f; --muted: #76664e; --accent: #876323; --accent-ink: #fff8e9; }
-      body.theme-paper { --reading-bg: #f4f4f0; --reading-text: #252525; --bg: #f4f4f0; --text: #252525; --panel: #e9e9e4; --panel-strong: #deded8; --line: #c9c9c2; --muted: #6f6f6a; --accent: #315d9b; --accent-ink: #fff; }
-      body.theme-sepia, body.theme-paper { color-scheme: light; }
-      body.theme-sepia .topbar, body.theme-paper .topbar { background: color-mix(in srgb, var(--bg) 92%, transparent); }
-      body.font-serif { --font-reading: Georgia, "Times New Roman", serif; }
-      body.font-mono { --font-reading: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
-      body.font-large .chapter-content { font-size: 21px; }
-      body.font-small .chapter-content { font-size: 16px; }
-      @media (max-width: 620px) {
-        .topbar { flex-wrap: wrap; gap: 9px; }
-        .brand { width: 100%; }
-        .url-form { width: 100%; }
-        .library-toolbar { align-items: start; flex-direction: column; gap: 5px; }
-        .reader-controls { align-items: stretch; }
-        .control-group { flex: 1; }
-        .control-select { flex: 1; }
-        .chapter-content { font-size: 17px; }
-      }
+      body { margin: 0; background: #000; color: #f5f5f7; -webkit-font-smoothing: antialiased; }
+      .glass { background: rgba(18,18,20,.78); backdrop-filter: blur(28px) saturate(180%); border: 1px solid rgba(255,255,255,.09); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 12px 32px -12px #000c; }
+      .pill { background: #fff; color: #000; font-weight: 600; font-size: 12px; padding: .7rem 1.25rem; border-radius: 1rem; }
+      .pill:disabled { opacity: .35; cursor: default; }
+      .chip { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: #d4d4d8; border-radius: .75rem; padding: .4rem .75rem; font: 500 12px "JetBrains Mono", monospace; }
+      .input { width: 100%; background: #0009; border: 1px solid #ffffff1a; border-radius: 1rem; padding: .7rem 1rem; color: #fff; outline: 0; }
+      .input:focus { border-color: #ffffff66; }
+      .input::placeholder { color: #52525b; }
+      .prose-reader p { margin: 0 0 1.35em; text-wrap: pretty; overflow-wrap: anywhere; }
+      .orb { background: radial-gradient(circle at 50% 0, #ffffff10, transparent 70%); pointer-events: none; }
+      .toast { animation: toast-in .2s ease; } @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+      button:focus-visible, input:focus-visible { outline: 2px solid #ffffff99; outline-offset: 2px; }
     </style>
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <a class="brand" href="#" id="brand-link" aria-label="Go to library">
-          <span class="brand-mark" aria-hidden="true"></span>
-          lagier reader
-        </a>
-        <form class="url-form" id="novel-form">
-          <input id="novel-url" type="url" required placeholder="Paste a RoyalRoad, NovelPhoenix, Chikari.moe, or any novel URL" aria-label="Novel URL" />
-          <button class="button button-primary" type="submit">Add novel</button>
-        </form>
-        <label class="api-settings" title="Scraper API endpoint">
-          API
-          <input id="api-base-url" type="url" spellcheck="false" aria-label="Scraper API URL" />
-          <button class="button" id="save-api-url" type="button">Save</button>
-        </label>
-      </header>
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useEffect, useMemo, useCallback, useRef } = React;
+      const CONFIG = {
+        api: localStorage.getItem("lr_api_url") || "https://lreadfunc.fra.appwrite.run",
+        endpoint: localStorage.getItem("lr_aw_endpoint") || "https://fra.cloud.appwrite.io/v1",
+        project: localStorage.getItem("lr_aw_project") || "YOUR_APPWRITE_PROJECT_ID",
+      };
+      const THEMES = {
+        void: { bg: "#000", surface: "rgba(16,16,18,.88)", text: "#e5e5ea", border: "#ffffff1a", accent: "#fff" },
+        graphite: { bg: "#101012", surface: "rgba(26,26,29,.9)", text: "#d1d1d6", border: "#ffffff20", accent: "#fff" },
+        sepia: { bg: "#f2ead8", surface: "rgba(232,221,198,.94)", text: "#2c2218", border: "#2c221826", accent: "#1c150e" },
+        paper: { bg: "#fafafa", surface: "rgba(255,255,255,.94)", text: "#1c1c1e", border: "#0000001a", accent: "#000" },
+      };
+      const FONTS = { sans: "font-sans", serif: "font-serif", mono: "font-mono" };
+      const cache = new Map();
+      const readJSON = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
+      const hostname = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "webnovel"; } };
+      const readMinutes = (text) => Math.max(1, Math.round((text || "").trim().split(/\s+/).length / 230));
 
-      <main>
-        <section class="view" id="library-view">
-          <p class="eyebrow">Your library</p>
-          <h1>Read without the noise.</h1>
-          <p class="subhead">A fast, quiet reader for web novels. Add a story above and keep your progress in one place.</p>
-          <div class="library-toolbar">
-            <h2>Library</h2>
-            <span class="library-count" id="library-count"></span>
+      function Modal({ title, close, children }) {
+        return <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onClick={close}>
+          <div className="glass rounded-[28px] max-w-md w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between"><h2 className="font-semibold">{title}</h2><button onClick={close} className="text-zinc-400">✕</button></div>{children}
           </div>
-          <div class="library-grid" id="library-grid"></div>
-        </section>
+        </div>;
+      }
 
-        <section class="view reader-view" id="reader-view" hidden>
-          <div class="reader-shell">
-            <div class="reader-top">
-              <button class="button button-quiet" id="back-button" type="button">← Library</button>
-              <span class="reader-label" id="reader-novel-label"></span>
-            </div>
-            <div class="reader-controls" aria-label="Reader settings">
-              <div class="control-group">
-                <span class="control-label">Size</span>
-                <button class="control-button" id="font-decrease" type="button" aria-label="Decrease font size">A−</button>
-                <button class="control-button" id="font-increase" type="button" aria-label="Increase font size">A+</button>
-              </div>
-              <label class="control-group">
-                <span class="control-label">Font</span>
-                <select class="control-select" id="font-select">
-                  <option value="sans">Sans</option>
-                  <option value="serif">Serif</option>
-                  <option value="mono">Mono</option>
-                </select>
-              </label>
-              <label class="control-group">
-                <span class="control-label">Theme</span>
-                <select class="control-select" id="theme-select">
-                  <option value="amoled">AMOLED Dark</option>
-                  <option value="sepia">Sepia</option>
-                  <option value="paper">Paper</option>
-                </select>
-              </label>
-            </div>
-            <div class="chapter-heading">
-              <p class="eyebrow" id="chapter-number"></p>
-              <h1 id="chapter-title">Loading chapter…</h1>
-              <p id="chapter-author"></p>
-            </div>
-            <article class="chapter-content" id="chapter-content">
-              <p class="loading">Loading chapter…</p>
-            </article>
-            <nav class="reader-footer" aria-label="Chapter navigation">
-              <button class="button" id="previous-button" type="button">← Previous</button>
-              <button class="button button-primary" id="next-button" type="button">Next Chapter →</button>
-            </nav>
-          </div>
-        </section>
-      </main>
-      <div class="toast" id="toast" hidden role="status"></div>
-    </div>
+      function App() {
+        const [config, setConfig] = useState(CONFIG);
+        const [user, setUser] = useState(null);
+        const [authLoading, setAuthLoading] = useState(true);
+        const [authMode, setAuthMode] = useState("login");
+        const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
+        const [authError, setAuthError] = useState("");
+        const [novels, setNovels] = useState([]);
+        const [view, setView] = useState("library");
+        const [active, setActive] = useState(null);
+        const [chapterIndex, setChapterIndex] = useState(0);
+        const [chapter, setChapter] = useState(null);
+        const [chapterError, setChapterError] = useState("");
+        const [loading, setLoading] = useState(false);
+        const [adding, setAdding] = useState(false);
+        const [url, setUrl] = useState("");
+        const [filter, setFilter] = useState("");
+        const [search, setSearch] = useState("");
+        const [statsOpen, setStatsOpen] = useState(false);
+        const [admin, setAdmin] = useState(false);
+        const [bookmarks, setBookmarks] = useState(() => readJSON("lr_bookmarks", {}));
+        const [stats, setStats] = useState(() => readJSON("lr_stats", { chapters: 0, minutes: 0 }));
+        const [prefs, setPrefs] = useState(() => ({ fontSize: 18, lineHeight: 1.78, font: "serif", theme: "void", width: 680, ...readJSON("lr_prefs", {}) }));
+        const account = useMemo(() => {
+          if (!config.project || config.project === "YOUR_APPWRITE_PROJECT_ID" || !window.Appwrite) return null;
+          try { return new Appwrite.Account(new Appwrite.Client().setEndpoint(config.endpoint).setProject(config.project)); } catch { return null; }
+        }, [config.endpoint, config.project]);
+        const userId = user?.$id || "guest_local";
+        const base = (config.api || "").replace(/\/+$/, "");
+        const headers = useCallback(() => ({ "Content-Type": "application/json", "X-User-Id": userId }), [userId]);
+        const request = useCallback(async (path, options = {}) => {
+          const response = await fetch(`${base}/${path.replace(/^\/+/, "")}`, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || data.message || `Request failed (${response.status})`);
+          return data;
+        }, [base, headers]);
 
-    <script>
-      (() => {
-        "use strict";
-
-        const API_BASE_URL = "https://lreadfunc.fra.appwrite.run";
-        const LOCAL_LIBRARY_KEY = "lagier-reader-library";
-        const SETTINGS_KEY = "lagier-reader-settings";
-        const USER_ID = localStorage.getItem("lr_user_id") || "guest_local";
-        const state = {
-          library: [],
-          novel: null,
-          chapterIndex: -1,
-          chapterCache: new Map(),
-          loadingChapter: false,
+        useEffect(() => { localStorage.setItem("lr_prefs", JSON.stringify(prefs)); }, [prefs]);
+        useEffect(() => { localStorage.setItem("lr_bookmarks", JSON.stringify(bookmarks)); }, [bookmarks]);
+        useEffect(() => { localStorage.setItem("lr_stats", JSON.stringify(stats)); }, [stats]);
+        useEffect(() => {
+          let mounted = true;
+          (async () => {
+            if (!account) { setUser({ $id: "guest_local", name: "Guest", isGuest: true }); setAuthLoading(false); return; }
+            try { if (mounted) setUser(await account.get()); } catch { if (mounted) setUser(null); } finally { if (mounted) setAuthLoading(false); }
+          })();
+          return () => { mounted = false; };
+        }, [account]);
+        const loadLibrary = useCallback(async () => {
+          if (!user) return;
+          try {
+            const data = await request(`/library?userId=${encodeURIComponent(userId)}`);
+            const list = Array.isArray(data) ? data : data.novels || [];
+            setNovels(list); localStorage.setItem(`lr_cache_${userId}`, JSON.stringify(list));
+          } catch (error) {
+            const cached = readJSON(`lr_cache_${userId}`, null);
+            if (cached) setNovels(cached); else setAuthError(error.message);
+          }
+        }, [request, user, userId]);
+        useEffect(() => { if (user) loadLibrary(); }, [user, loadLibrary]);
+        const login = async (event) => {
+          event.preventDefault(); setAuthError("");
+          if (!account) { setAuthError("Authentication is not configured. Unlock Admin settings and add an Appwrite project ID, or continue as Guest."); return; }
+          try {
+            if (authMode === "signup") await account.create(Appwrite.ID.unique(), authForm.email, authForm.password, authForm.name || authForm.email.split("@")[0]);
+            await account.createEmailPasswordSession(authForm.email, authForm.password); setUser(await account.get());
+          } catch (error) { setAuthError(error.message || "Authentication failed"); }
         };
-        const $ = (selector) => document.querySelector(selector);
-        const libraryView = $("#library-view");
-        const readerView = $("#reader-view");
-        const toast = $("#toast");
-
-        function showToast(message) {
-          toast.textContent = message;
-          toast.hidden = false;
-          clearTimeout(showToast.timer);
-          showToast.timer = setTimeout(() => { toast.hidden = true; }, 3600);
-        }
-
-        function loadLocalLibrary() {
+        const logout = async () => { if (account && !user?.isGuest) try { await account.deleteSession("current"); } catch {} setUser(null); setNovels([]); setView("library"); };
+        const saveSettings = (event) => {
+          event.preventDefault(); localStorage.setItem("lr_api_url", config.api.trim()); localStorage.setItem("lr_aw_endpoint", config.endpoint.trim()); localStorage.setItem("lr_aw_project", config.project.trim()); setAdmin(false);
+        };
+        const addNovel = async (event) => {
+          event.preventDefault(); if (!url.trim()) return; setAdding(true);
+          try { const data = await request("/novel", { method: "POST", body: JSON.stringify({ url: url.trim(), userId }) }); setUrl(""); await loadLibrary(); setActive(data.novel || data); setView("novel"); }
+          catch (error) { setAuthError(error.message); } finally { setAdding(false); }
+        };
+        const removeNovel = async (novel) => {
+          if (!window.confirm(`Remove "${novel.title || "this novel"}" from your shelf?`)) return;
+          try { await request("/novel", { method: "DELETE", body: JSON.stringify({ url: novel.url, userId }) }); } catch (error) { setAuthError(error.message); return; }
+          setNovels((items) => items.filter((item) => item.url !== novel.url)); if (active?.url === novel.url) setView("library");
+        };
+        const openChapter = useCallback(async (novel, index, resume = false) => {
+          const target = novel?.chapters?.[index]; if (!target) return;
+          setActive(novel); setChapterIndex(index); setView("reader"); setChapterError(""); setLoading(true); window.scrollTo({ top: 0, behavior: "instant" });
           try {
-            return JSON.parse(localStorage.getItem(LOCAL_LIBRARY_KEY) || "[]");
-          } catch {
-            return [];
-          }
-        }
+            let data = cache.get(target.url);
+            if (!data) { data = await request(`/chapter?url=${encodeURIComponent(target.url)}&userId=${encodeURIComponent(userId)}&novelUrl=${encodeURIComponent(novel.url)}`); cache.set(target.url, data); }
+            setChapter(data); setStats((old) => ({ chapters: old.chapters + 1, minutes: old.minutes + readMinutes(data.text || data.content) }));
+            setNovels((items) => items.map((item) => item.url === novel.url ? { ...item, lastReadIndex: index, lastReadChapterUrl: target.url, lastReadChapterTitle: target.title } : item));
+            request("/progress", { method: "POST", body: JSON.stringify({ userId, novelUrl: novel.url, lastReadChapterUrl: target.url, lastReadChapterTitle: target.title, lastReadIndex: index }) }).catch(() => {});
+            const next = novel.chapters[index + 1]; if (next && !cache.has(next.url)) request(`/chapter?url=${encodeURIComponent(next.url)}&userId=${encodeURIComponent(userId)}&novelUrl=${encodeURIComponent(novel.url)}`).then((nextData) => cache.set(next.url, nextData)).catch(() => {});
+            if (resume) setTimeout(() => window.scrollTo({ top: Number(readJSON("lr_scroll", {})[target.url] || 0), behavior: "instant" }), 50);
+          } catch (error) { setChapter(null); setChapterError(error.message); } finally { setLoading(false); }
+        }, [request, userId]);
+        const filtered = useMemo(() => novels.filter((novel) => !filter || `${novel.title} ${novel.author}`.toLowerCase().includes(filter.toLowerCase())), [novels, filter]);
+        const chapters = useMemo(() => (active?.chapters || []).map((item, index) => ({ ...item, index })).filter((item) => !search || item.title.toLowerCase().includes(search.toLowerCase())), [active, search]);
+        const toast = authError && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 glass rounded-full px-4 py-3 text-xs max-w-[90vw]">{authError}<button className="ml-3 text-zinc-400" onClick={() => setAuthError("")}>✕</button></div>;
 
-        function saveLocalLibrary() {
-          localStorage.setItem(LOCAL_LIBRARY_KEY, JSON.stringify(state.library));
-        }
+        if (authLoading) return <div className="min-h-screen bg-void flex items-center justify-center font-mono text-xs text-zinc-500">read.lagierr.me</div>;
+        if (!user) return <div className="min-h-screen bg-void flex items-center justify-center p-5"><div className="glass rounded-[28px] p-7 w-full max-w-sm"><h1 className="font-serif text-3xl mb-2">{authMode === "login" ? "Welcome back" : "Create your shelf"}</h1><p className="text-sm text-zinc-400 mb-6">Sign in to sync your library across devices.</p>{authError && <p className="text-xs text-red-300 mb-4">{authError}</p>}<form onSubmit={login} className="space-y-3">{authMode === "signup" && <input className="input" placeholder="Name" required value={authForm.name} onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })} />}<input className="input" type="email" placeholder="Email" required value={authForm.email} onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} /><input className="input" type="password" minLength="8" placeholder="Password" required value={authForm.password} onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })} /><button className="pill w-full">{authMode === "login" ? "Sign in" : "Create account"}</button></form><button className="text-xs text-zinc-400 mt-5" onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthError(""); }}>{authMode === "login" ? "Create an account" : "Sign in instead"}</button></div></div>;
 
-        function getApiBaseUrl() {
-          let settings = {};
-          try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch {}
-          const configured = settings.apiBaseUrl || window.SCRAPER_API_URL || API_BASE_URL;
-          return configured.trim().replace(/\/+$/, "");
-        }
+        const theme = THEMES[prefs.theme];
+        const nav = <header className="sticky top-0 z-30 bg-black/80 backdrop-blur-xl border-b border-white/10 px-4 py-3"><div className="max-w-5xl mx-auto flex justify-between items-center"><button className="font-semibold" onClick={() => setView("library")}>● read.lagierr.me</button><div className="flex gap-2"><button className="chip" onClick={() => setStatsOpen(true)}>Stats</button><button className="chip" onClick={() => setAdmin(true)}>Settings</button><button className="chip" onClick={logout}>{user.isGuest ? "Sign in" : "Sign out"}</button></div></div></header>;
+        const settingsModal = admin && <Modal title="Settings" close={() => setAdmin(false)}><form onSubmit={saveSettings} className="space-y-3"><label className="text-xs text-zinc-400">Scraper API URL<input className="input mt-1 text-xs" value={config.api} onChange={(e) => setConfig({ ...config, api: e.target.value })} /></label><label className="text-xs text-zinc-400">Appwrite endpoint<input className="input mt-1 text-xs" value={config.endpoint} onChange={(e) => setConfig({ ...config, endpoint: e.target.value })} /></label><label className="text-xs text-zinc-400">Appwrite project ID<input className="input mt-1 text-xs" value={config.project} onChange={(e) => setConfig({ ...config, project: e.target.value })} /></label><button className="pill w-full">Save settings</button></form></Modal>;
+        const statsModal = statsOpen && <Modal title="Reading statistics" close={() => setStatsOpen(false)}><div className="grid grid-cols-2 gap-3 text-center"><div className="glass p-4 rounded-2xl"><b className="text-2xl">{stats.chapters}</b><p className="text-xs text-zinc-400">Chapters</p></div><div className="glass p-4 rounded-2xl"><b className="text-2xl">{stats.minutes}m</b><p className="text-xs text-zinc-400">Reading time</p></div></div></Modal>;
 
-        function apiUrl(path) {
-          return `${getApiBaseUrl()}/${String(path).replace(/^\/+/, "")}`;
-        }
-
-        async function api(path, options = {}) {
-          const requestOptions = {
-            ...options,
-            headers: {
-              "Content-Type": "application/json",
-              "X-User-Id": USER_ID,
-              ...(options.headers || {}),
-            },
-          };
-          let response;
-          try {
-            response = await fetch(apiUrl(path), requestOptions);
-          } catch (error) {
-            throw new Error(`Scraper API unavailable at ${getApiBaseUrl()}: ${error.message}`);
-          }
-          const body = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            const detail = body.error || body.message || response.statusText || "Unknown error";
-            throw new Error(`Scraper API ${response.status}: ${detail}`);
-          }
-          return body;
-        }
-
-        function escapeHtml(value) {
-          return String(value || "").replace(/[&<>"']/g, (character) => ({
-            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
-          }[character]));
-        }
-
-        function chapterPosition(novel) {
-          const savedUrl = novel?.lastReadChapterUrl;
-          const index = savedUrl ? novel.chapters?.findIndex((chapter) => chapter.url === savedUrl) : -1;
-          return index >= 0 ? index : 0;
-        }
-
-        function renderLibrary() {
-          $("#library-count").textContent = `${state.library.length} ${state.library.length === 1 ? "novel" : "novels"}`;
-          if (!state.library.length) {
-            $("#library-grid").innerHTML = '<div class="empty-state">Your library is empty. Paste a novel URL above to begin.</div>';
-            return;
-          }
-          $("#library-grid").innerHTML = state.library.map((novel, index) => {
-            const chapters = novel.chapters || [];
-            const hasProgress = Boolean(novel.lastReadChapterUrl);
-            const cover = novel.coverImageUrl
-              ? `<img class="novel-cover" src="${escapeHtml(novel.coverImageUrl)}" alt="" loading="lazy">`
-              : `<div class="novel-cover is-empty" aria-hidden="true">LR</div>`;
-            const tags = (novel.tags || []).slice(0, 5).map((tag) =>
-              `<span class="novel-tag">${escapeHtml(tag)}</span>`).join("");
-            return `
-              <article class="novel-card">
-                ${cover}
-                <div class="novel-card-body">
-                  <h3 class="novel-title">${escapeHtml(novel.title || "Untitled novel")}</h3>
-                  <p class="novel-author">${escapeHtml(novel.author || "Unknown author")}</p>
-                  ${novel.synopsis ? `<p class="novel-synopsis">${escapeHtml(novel.synopsis)}</p>` : ""}
-                  ${tags ? `<div class="novel-tags">${tags}</div>` : ""}
-                  <div class="novel-meta">${chapters.length} ${chapters.length === 1 ? "chapter" : "chapters"}</div>
-                  <div class="novel-actions">
-                    <button class="button button-primary continue-button" type="button" data-index="${index}" ${chapters.length ? "" : "disabled"}>${hasProgress ? "Continue" : "Start reading"}</button>
-                    ${hasProgress && chapters.length ? `<button class="button start-over-button" type="button" data-index="${index}">Start over</button>` : ""}
-                    <button class="button edit-button" type="button" data-index="${index}">Edit</button>
-                    <button class="button delete-button" type="button" data-index="${index}">Delete</button>
-                  </div>
-                </div>
-              </article>`;
-          }).join("");
-          document.querySelectorAll(".continue-button").forEach((button) => {
-            button.addEventListener("click", () => openNovel(state.library[Number(button.dataset.index)], true));
-          });
-          document.querySelectorAll(".start-over-button").forEach((button) => {
-            button.addEventListener("click", () => openNovel(state.library[Number(button.dataset.index)], false));
-          });
-          document.querySelectorAll(".edit-button").forEach((button) => {
-            button.addEventListener("click", () => refreshNovel(Number(button.dataset.index)));
-          });
-          document.querySelectorAll(".delete-button").forEach((button) => {
-            button.addEventListener("click", () => deleteNovel(Number(button.dataset.index)));
-          });
-        }
-
-        async function loadLibrary() {
-          state.library = loadLocalLibrary();
-          renderLibrary();
-          try {
-            const remoteLibrary = await api("/library");
-            const remoteNovels = Array.isArray(remoteLibrary)
-              ? remoteLibrary
-              : remoteLibrary.novels;
-            if (Array.isArray(remoteNovels)) {
-              state.library = remoteNovels;
-              saveLocalLibrary();
-              renderLibrary();
-            }
-          } catch {
-            if (state.library.length) showToast("Offline mode: showing your saved library.");
-          }
-        }
-
-        async function addNovel(event) {
-          event.preventDefault();
-          const input = $("#novel-url");
-          const url = input.value.trim();
-          if (!url) return;
-          const button = event.submitter || event.target.querySelector("button");
-          button.disabled = true;
-          button.textContent = "Adding…";
-          try {
-            let novel;
-            try {
-              novel = await api("/novel", { method: "POST", body: JSON.stringify({ url }) });
-            } catch (remoteError) {
-              if (!window.confirm(`The scraper API is unavailable. Save this URL for later?\n\n${remoteError.message}`)) throw remoteError;
-              novel = { url, title: new URL(url).hostname, author: "", synopsis: "", tags: [], chapters: [] };
-            }
-            const existing = state.library.findIndex((item) => item.url === novel.url);
-            if (existing >= 0) state.library[existing] = novel;
-            else state.library.unshift(novel);
-            saveLocalLibrary();
-            input.value = "";
-            renderLibrary();
-            showToast("Novel added to your library.");
-          } catch (error) {
-            showToast(error.message || "Could not add that novel.");
-          } finally {
-            button.disabled = false;
-            button.textContent = "Add novel";
-          }
-        }
-
-        async function refreshNovel(index) {
-          const current = state.library[index];
-          if (!current) return;
-          const enteredUrl = window.prompt("Novel URL", current.url);
-          if (!enteredUrl) return;
-
-          try {
-            const novel = await api("/novel", {
-              method: "POST",
-              body: JSON.stringify({ url: enteredUrl.trim() }),
-            });
-            state.library.splice(index, 1);
-            state.library.unshift(novel);
-            saveLocalLibrary();
-            renderLibrary();
-            showToast("Novel refreshed.");
-          } catch (error) {
-            showToast(`Could not refresh novel: ${error.message}`);
-          }
-        }
-
-        async function deleteNovel(index) {
-          const novel = state.library[index];
-          if (!novel || !window.confirm(`Remove "${novel.title || "this novel"}" from your library?`)) return;
-
-          try {
-            await api(`/novel?url=${encodeURIComponent(novel.url)}`, { method: "DELETE" });
-          } catch (error) {
-            if (!window.confirm(`The server could not remove this novel (${error.message}). Remove the local copy anyway?`)) {
-              return;
-            }
-          }
-
-          state.library.splice(index, 1);
-          saveLocalLibrary();
-          renderLibrary();
-          showToast("Novel removed.");
-        }
-
-        async function getChapter(url) {
-          if (state.chapterCache.has(url)) return state.chapterCache.get(url);
-          const chapter = await api(`/chapter?url=${encodeURIComponent(url)}`);
-          state.chapterCache.set(url, chapter);
-          return chapter;
-        }
-
-        function prefetchNextChapter() {
-          const next = state.novel?.chapters?.[state.chapterIndex + 1];
-          if (!next || state.chapterCache.has(next.url)) return;
-          getChapter(next.url).catch(() => {});
-        }
-
-        async function openChapter(index) {
-          const chapters = state.novel?.chapters || [];
-          if (index < 0 || index >= chapters.length || state.loadingChapter) return;
-          state.loadingChapter = true;
-          state.chapterIndex = index;
-          const chapter = chapters[index];
-          $("#chapter-number").textContent = `Chapter ${chapter.number ?? index + 1}`;
-          $("#chapter-title").textContent = chapter.title || "Untitled chapter";
-          $("#chapter-content").innerHTML = '<p class="loading">Loading chapter…</p>';
-          $("#previous-button").disabled = index === 0;
-          $("#next-button").disabled = index === chapters.length - 1;
-          window.scrollTo({ top: 0, behavior: "instant" });
-          try {
-            const content = await getChapter(chapter.url);
-            $("#chapter-title").textContent = content.title || chapter.title || "Untitled chapter";
-            $("#chapter-content").innerHTML = content.content || `<p>${escapeHtml(content.text || "This chapter is empty.")}</p>`;
-            state.novel.lastReadChapterUrl = chapter.url;
-            state.novel.lastReadChapterTitle = content.title || chapter.title || "";
-            const novelIndex = state.library.findIndex((item) => item.url === state.novel.url);
-            if (novelIndex >= 0) state.library[novelIndex] = state.novel;
-            saveLocalLibrary();
-            api("/progress", {
-              method: "POST",
-              body: JSON.stringify({
-                novelUrl: state.novel.url,
-                lastReadChapterUrl: chapter.url,
-                lastReadChapterTitle: state.novel.lastReadChapterTitle,
-                lastReadIndex: state.chapterIndex,
-              }),
-            }).catch(() => {});
-            prefetchNextChapter();
-          } catch (error) {
-            $("#chapter-content").innerHTML = `<p>${escapeHtml(error.message || "Could not load this chapter.")}</p>`;
-            showToast("Could not load chapter.");
-          } finally {
-            state.loadingChapter = false;
-          }
-        }
-
-        function openNovel(novel, resume = true) {
-          if (!novel?.chapters?.length) {
-            showToast("This novel has no chapters yet.");
-            return;
-          }
-          state.novel = novel;
-          state.chapterCache = new Map();
-          $("#reader-novel-label").textContent = novel.title || novel.url;
-          libraryView.hidden = true;
-          readerView.hidden = false;
-          openChapter(resume ? chapterPosition(novel) : 0);
-        }
-
-        function showLibrary() {
-          readerView.hidden = true;
-          libraryView.hidden = false;
-          state.novel = null;
-          window.scrollTo({ top: 0, behavior: "instant" });
-        }
-
-        function loadSettings() {
-          let settings = {};
-          try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch {}
-          const font = settings.font || "sans";
-          const theme = settings.theme || "amoled";
-          document.body.classList.add(`font-${font}`, `theme-${theme}`);
-          $("#font-select").value = font;
-          $("#theme-select").value = theme;
-          $("#api-base-url").value = getApiBaseUrl();
-          if (settings.size) document.body.classList.add(`font-${settings.size}`);
-        }
-
-        function saveSettings() {
-          const font = $("#font-select").value;
-          const theme = $("#theme-select").value;
-          const size = document.body.classList.contains("font-large") ? "large" : document.body.classList.contains("font-small") ? "small" : "normal";
-          let settings = {};
-          try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch {}
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, font, theme, size }));
-        }
-
-        function saveApiBaseUrl() {
-          const input = $("#api-base-url");
-          const value = input.value.trim().replace(/\/+$/, "");
-          try {
-            const url = new URL(value);
-            if (!["http:", "https:"].includes(url.protocol)) throw new Error();
-            const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, apiBaseUrl: value }));
-            input.value = value;
-            showToast("Scraper API URL saved.");
-          } catch {
-            showToast("Enter a valid HTTP(S) scraper API URL.");
-          }
-        }
-
-        $("#novel-form").addEventListener("submit", addNovel);
-        $("#save-api-url").addEventListener("click", saveApiBaseUrl);
-        $("#brand-link").addEventListener("click", (event) => { event.preventDefault(); showLibrary(); });
-        $("#back-button").addEventListener("click", showLibrary);
-        $("#previous-button").addEventListener("click", () => openChapter(state.chapterIndex - 1));
-        $("#next-button").addEventListener("click", () => openChapter(state.chapterIndex + 1));
-        $("#font-select").addEventListener("change", (event) => {
-          document.body.classList.remove("font-sans", "font-serif", "font-mono");
-          document.body.classList.add(`font-${event.target.value}`);
-          saveSettings();
-        });
-        $("#theme-select").addEventListener("change", (event) => {
-          document.body.classList.remove("theme-amoled", "theme-sepia", "theme-paper");
-          document.body.classList.add(`theme-${event.target.value}`);
-          saveSettings();
-        });
-        $("#font-increase").addEventListener("click", () => {
-          document.body.classList.remove("font-small");
-          document.body.classList.add("font-large");
-          saveSettings();
-        });
-        $("#font-decrease").addEventListener("click", () => {
-          document.body.classList.remove("font-large");
-          document.body.classList.add("font-small");
-          saveSettings();
-        });
-        window.addEventListener("scroll", () => {
-          if (readerView.hidden || !state.novel) return;
-          const progress = (window.scrollY + window.innerHeight) / document.documentElement.scrollHeight;
-          if (progress >= .7) prefetchNextChapter();
-        }, { passive: true });
-
-        loadSettings();
-        loadLibrary();
-      })();
+        if (view === "reader" && active) return <div style={{ background: theme.bg, color: theme.text }} className="min-h-screen"><header style={{ background: theme.surface, borderColor: theme.border }} className="sticky top-0 z-30 border-b p-3"><div className="max-w-3xl mx-auto flex justify-between gap-3"><button onClick={() => setView("novel")} className="text-xs">← Chapters</button><span className="truncate text-xs">{active.title}</span><button onClick={() => setPrefs({ ...prefs, theme: prefs.theme === "void" ? "sepia" : "void" })}>Aa</button></div></header><main style={{ maxWidth: prefs.width }} className={`mx-auto px-5 py-10 prose-reader ${FONTS[prefs.font] || FONTS.serif}`}><p className="font-mono text-xs opacity-60">Chapter {chapterIndex + 1} of {active.chapters.length}</p><h1 className="font-serif text-3xl mb-10">{chapter?.title || active.chapters[chapterIndex]?.title}</h1>{loading ? <p>Loading chapter…</p> : chapterError ? <p className="text-red-300">{chapterError}</p> : (chapter?.text || chapter?.content || "").split(/\n+/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}<div className="flex justify-between border-t pt-8 mt-12" style={{ borderColor: theme.border }}><button disabled={!chapterIndex} onClick={() => openChapter(active, chapterIndex - 1)} className="chip">← Previous</button><button disabled={chapterIndex >= active.chapters.length - 1} onClick={() => openChapter(active, chapterIndex + 1)} className="pill">Next chapter →</button></div></main></div>;
+        if (view === "novel" && active) return <div className="min-h-screen bg-void">{nav}<main className="max-w-4xl mx-auto p-5 sm:p-8"><button className="chip mb-5" onClick={() => setView("library")}>← Shelf</button><section className="glass rounded-[28px] p-6 flex gap-5"><div className="w-28 h-40 rounded-2xl overflow-hidden bg-zinc-950 shrink-0">{(active.cover || active.coverImageUrl) && <img src={active.cover || active.coverImageUrl} className="w-full h-full object-cover" />}</div><div><h1 className="font-serif text-3xl">{active.title}</h1><p className="text-sm text-zinc-400 mt-2">{active.author || "Unknown author"} · {active.chapters?.length || 0} chapters</p><p className="text-sm text-zinc-400 mt-4 max-w-xl">{active.synopsis}</p><button className="pill mt-6" disabled={!active.chapters?.length} onClick={() => openChapter(active, active.lastReadIndex || 0, true)}>{active.lastReadIndex > 0 ? `Resume chapter ${active.lastReadIndex + 1}` : "Start reading"}</button></div></section><div className="glass rounded-[28px] p-5 mt-5"><div className="flex gap-2 mb-4"><input className="input" placeholder="Search chapters" value={search} onChange={(e) => setSearch(e.target.value)} /><button className="chip" onClick={() => request("/novel", { method: "POST", body: JSON.stringify({ url: active.url, userId }) }).then(loadLibrary)}>Refresh</button><button className="chip" onClick={() => removeNovel(active)}>Delete</button></div><div className="max-h-[60vh] overflow-y-auto">{chapters.map((item) => <button key={item.index} className="w-full text-left p-3 rounded-xl text-sm text-zinc-300 hover:bg-white/10" onClick={() => openChapter(active, item.index)}>{item.title || `Chapter ${item.index + 1}`}</button>)}</div></div></main>{settingsModal}{statsModal}</div>;
+        return <div className="min-h-screen bg-void">{nav}<div className="orb absolute inset-0 h-96" /><main className="relative max-w-5xl mx-auto p-5 sm:p-10"><section className="glass rounded-[28px] p-6 mb-7"><h1 className="font-serif text-4xl mb-5">Read without the noise.</h1><form onSubmit={addNovel} className="flex flex-col sm:flex-row gap-2"><input className="input" type="url" required placeholder="Paste a novel URL" value={url} onChange={(e) => setUrl(e.target.value)} /><button className="pill shrink-0" disabled={adding}>{adding ? "Adding…" : "Add story"}</button></form></section><div className="flex justify-between items-center mb-4"><h2 className="font-mono text-xs uppercase text-zinc-400">Library ({filtered.length})</h2><input className="input !w-52 !py-2 text-xs" placeholder="Search shelf" value={filter} onChange={(e) => setFilter(e.target.value)} /></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{filtered.map((novel) => <article key={novel._id || novel.url} className="glass rounded-[24px] p-4"><button className="w-full text-left" onClick={() => { setActive(novel); setView("novel"); }}><div className="flex gap-4"><div className="w-20 h-28 rounded-2xl bg-zinc-950 overflow-hidden shrink-0">{(novel.cover || novel.coverImageUrl) && <img src={novel.cover || novel.coverImageUrl} className="w-full h-full object-cover" />}</div><div className="min-w-0"><h3 className="font-serif text-lg line-clamp-2">{novel.title || hostname(novel.url)}</h3><p className="text-xs text-zinc-400 mt-1">{novel.author || "Unknown author"}</p><p className="text-xs text-zinc-500 mt-3">{novel.chapters?.length || 0} chapters</p></div></div></button><button className="pill mt-4 w-full" disabled={!novel.chapters?.length} onClick={() => openChapter(novel, novel.lastReadIndex || 0, true)}>{novel.lastReadIndex > 0 ? "Resume reading" : "Start reading"}</button></article>)}</div></main>{settingsModal}{statsModal}</div>;
+      }
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
     </script>
   </body>
 </html>
