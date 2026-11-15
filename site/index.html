@@ -357,7 +357,10 @@
       (() => {
         "use strict";
 
-        const API_BASE = window.SCRAPER_API_URL || "/api";
+        const configuredApiBase = window.SCRAPER_API_URL
+          || document.querySelector('meta[name="scraper-api-url"]')?.content
+          || "/api";
+        const API_BASE = configuredApiBase.replace(/\/+$/, "");
         const LOCAL_LIBRARY_KEY = "lagier-reader-library";
         const SETTINGS_KEY = "lagier-reader-settings";
         const state = {

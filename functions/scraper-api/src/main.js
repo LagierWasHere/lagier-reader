@@ -55,8 +55,13 @@ function getRequiredUrl(value, fieldName) {
 }
 
 function getPath(req) {
-  const path = (req.path || '/').replace(/\/+$/, '');
-  return path || '/';
+  const rawPath = (req.path || '/').split('?')[0].replace(/\/+$/, '') || '/';
+  const pathParts = rawPath.split('/').filter(Boolean);
+  const routeIndex = pathParts.findIndex((part) =>
+    ['library', 'novel', 'chapter', 'progress'].includes(part),
+  );
+
+  return routeIndex >= 0 ? `/${pathParts.slice(routeIndex).join('/')}` : rawPath;
 }
 
 async function getLibrary(res) {
