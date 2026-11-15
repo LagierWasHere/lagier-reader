@@ -175,6 +175,48 @@ function getFirstValue($, selectors, attribute) {
   return null;
 }
 
+function getStructuredData($) {
+  const values = [];
+
+  $('script[type="application/ld+json"]').each((_, element) => {
+    try {
+      const parsed = JSON.parse($(element).contents().text());
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of items) {
+        if (item && typeof item === 'object' && Array.isArray(item['@graph'])) {
+          values.push(...item['@graph']);
+        } else if (item && typeof item === 'object') {
+          values.push(item);
+        }
+      }
+    } catch {
+      // Ignore malformed JSON-LD and continue with the page markup.
+    }
+  });
+
+  return values.find((item) => {
+    const type = Array.isArray(item['@type']) ? item['@type'] : [item['@type']];
+    return type.some((value) => ['Book', 'Article', 'CreativeWork'].includes(value));
+  }) || values[0] || {};
+}
+
+function getStructuredAuthor(data) {
+  if (typeof data.author === 'string') {
+    return data.author.trim();
+  }
+
+  if (Array.isArray(data.author)) {
+    const author = data.author.find((item) => item && typeof item.name === 'string');
+    return author ? author.name.trim() : '';
+  }
+
+  if (data.author && typeof data.author.name === 'string') {
+    return data.author.name.trim();
+  }
+
+  return '';
+}
+
 function getCoverUrl($, selectors, baseUrl) {
   for (const selector of selectors) {
     const element = $(selector).first();
@@ -237,50 +279,34 @@ function parseChapters($, selectors, baseUrl) {
   const chapters = [];
   const seenUrls = new Set();
 
-  for (const selector of selectors) {
-    $(selector).each((index, element) => {
-      const link = $(element);
-      const href = toAbsoluteUrl(link.attr('href'), baseUrl);
-      const title =
-        link.text().replace(/\s+/g, ' ').trim() ||
-        link.attr('title') ||
-        link.attr('aria-label') ||
-        '';
+  const addChapter = (element) => {
+    const link = $(element);
+    const href = toAbsoluteUrl(link.attr('href'), baseUrl);
+    const title =
+      link.text().replace(/\s+/g, ' ').trim() ||
+      link.attr('title') ||
+      link.attr('data-title') ||
+      link.attr('aria-label') ||
+      '';
 
-      if (!href || !title || seenUrls.has(href) || !isChapterLink(title, href, baseUrl)) {
-        return;
-      }
-
-      seenUrls.add(href);
-      chapters.push({
-        title,
-        url: href,
-        number: parseChapterNumber(title, href, chapters.length + 1),
-      });
-    });
-
-    if (chapters.length) {
-      break;
+    if (!href || !title || seenUrls.has(href) || !isChapterLink(title, href, baseUrl)) {
+      return;
     }
+
+    seenUrls.add(href);
+    chapters.push({
+      title,
+      url: href,
+      number: parseChapterNumber(title, href, chapters.length + 1),
+    });
+  };
+
+  for (const selector of selectors) {
+    $(selector).each((_, element) => addChapter(element));
   }
 
   if (!chapters.length) {
-    $('a[href]').each((_, element) => {
-      const link = $(element);
-      const href = toAbsoluteUrl(link.attr('href'), baseUrl);
-      const title = link.text().replace(/\s+/g, ' ').trim();
-
-      if (!href || !title || seenUrls.has(href) || !isChapterLink(title, href, baseUrl)) {
-        return;
-      }
-
-      seenUrls.add(href);
-      chapters.push({
-        title,
-        url: href,
-        number: parseChapterNumber(title, href, chapters.length + 1),
-      });
-    });
+    $('a[href]').each((_, element) => addChapter(element));
   }
 
   if (chapters.length > 1 && chapters.every((chapter) => Number.isFinite(chapter.number))) {
@@ -288,6 +314,140 @@ function parseChapters($, selectors, baseUrl) {
   }
 
   return chapters;
+}
+
+function getPaginationLinks($, baseUrl) {
+  const links = [];
+  const seenUrls = new Set();
+
+  $('a[href]').each((_, element) => {
+    const link = $(element);
+    const url = toAbsoluteUrl(link.attr('href'), baseUrl);
+    if (!url || seenUrls.has(url)) {
+      return;
+    }
+
+    const text = link.text().replace(/\s+/g, ' ').trim().toLowerCase();
+    const rel = (link.attr('rel') || '').toLowerCase().split(/\s+/);
+    const className = (link.attr('class') || '').toLowerCase();
+    const paginationContainer = link.closest(
+      '.pagination, .pager, .page-numbers, .nav-links, [class*="pagination"], [class*="pager"]',
+    );
+    const isPaginationLink =
+      rel.includes('next') ||
+      rel.includes('prev') ||
+      paginationContainer.length > 0 ||
+      /\b(first|last|next|prev|previous|older|newer)\b/.test(text) ||
+      /\b(next|prev|previous|older|newer)\b/.test(className);
+
+    if (isPaginationLink) {
+      seenUrls.add(url);
+      links.push({
+        url,
+        text,
+        rel,
+        isLast: /\blast\b/.test(text) || /\blast\b/.test(className),
+        isNext: rel.includes('next') || /\bnext\b/.test(text) || /\bnext\b/.test(className),
+      });
+    }
+  });
+
+  return links;
+}
+
+function getPageNumber(url) {
+  const parsedUrl = new URL(url);
+  for (const key of ['page', 'paged', 'p']) {
+    const value = Number(parsedUrl.searchParams.get(key));
+    if (Number.isInteger(value) && value > 0) {
+      return { type: 'query', key, value };
+    }
+  }
+
+  const match = parsedUrl.pathname.match(/\/(?:page|paged)\/(\d+)(?:\/|$)/i);
+  if (match) {
+    return { type: 'path', value: Number(match[1]) };
+  }
+
+  return null;
+}
+
+function replacePageNumber(url, pageNumber, pagePattern) {
+  const parsedUrl = new URL(url);
+  if (pagePattern.type === 'query') {
+    parsedUrl.searchParams.set(pagePattern.key, String(pageNumber));
+  } else {
+    parsedUrl.pathname = parsedUrl.pathname.replace(
+      /\/(?:page|paged)\/\d+(?=\/|$)/i,
+      (match) => match.replace(/\d+/, String(pageNumber)),
+    );
+  }
+  return parsedUrl.href;
+}
+
+function getPaginatedPageUrls($, baseUrl) {
+  const links = getPaginationLinks($, baseUrl);
+  const nextLink = links.find((link) => link.isNext);
+  const lastLink = links.find((link) => link.isLast);
+  const nextPage = nextLink && getPageNumber(nextLink.url);
+  const lastPage = lastLink && getPageNumber(lastLink.url);
+
+  if (nextPage && lastPage && nextPage.type === lastPage.type) {
+    const pageUrls = [];
+    for (let page = nextPage.value; page <= lastPage.value; page += 1) {
+      pageUrls.push(replacePageNumber(nextLink.url, page, nextPage));
+    }
+    return pageUrls;
+  }
+
+  return nextLink ? [nextLink.url] : [];
+}
+
+async function fetchPaginatedPages(firstPage) {
+  const pages = [firstPage];
+  const visitedUrls = new Set([firstPage.url]);
+  let currentPage = firstPage;
+
+  for (let pageNumber = 0; pageNumber < 1000; pageNumber += 1) {
+    const pageUrls = getPaginatedPageUrls(
+      cheerio.load(currentPage.html),
+      currentPage.url,
+    );
+    if (!pageUrls.length) {
+      break;
+    }
+
+    if (pageUrls.length > 1) {
+      const additionalPages = await Promise.all(
+        pageUrls
+          .filter((url) => !visitedUrls.has(url))
+          .map(async (url) => {
+            try {
+              return await fetchPage(url);
+            } catch {
+              return null;
+            }
+          }),
+      );
+      pages.push(...additionalPages.filter(Boolean));
+      break;
+    }
+
+    const nextUrl = pageUrls[0];
+    if (visitedUrls.has(nextUrl)) {
+      break;
+    }
+
+    try {
+      currentPage = await fetchPage(nextUrl);
+    } catch {
+      break;
+    }
+    visitedUrls.add(nextUrl);
+    pages.push(currentPage);
+  }
+
+  return pages;
 }
 
 async function fetchPage(url) {
@@ -323,27 +483,71 @@ async function fetchPage(url) {
 }
 
 async function scrapeNovel(url) {
-  const page = await fetchPage(url);
-  const $ = cheerio.load(page.html);
-  const selectors = DOMAIN_SELECTORS[getSiteKey(page.url)];
+  const firstPage = await fetchPage(url);
+  const pages = await fetchPaginatedPages(firstPage);
+  const $ = cheerio.load(firstPage.html);
+  const structuredData = getStructuredData($);
+  const selectors = DOMAIN_SELECTORS[getSiteKey(firstPage.url)];
 
   const title =
     getFirstValue($, selectors.title, 'content') ||
+    structuredData.name ||
+    structuredData.headline ||
     getFirstValue($, ['title']) ||
     '';
-  const author = getFirstValue($, selectors.author, 'content') || '';
+  const author =
+    getFirstValue($, selectors.author, 'content') || getStructuredAuthor(structuredData);
   const synopsis =
     getFirstValue($, selectors.synopsis || [], 'content') ||
+    structuredData.description ||
     getFirstValue($, ['meta[name="description"]'], 'content') ||
     '';
+  const structuredTags = [
+    ...(Array.isArray(structuredData.genre)
+      ? structuredData.genre
+      : typeof structuredData.genre === 'string'
+        ? structuredData.genre.split(',')
+        : []),
+    ...(typeof structuredData.keywords === 'string'
+      ? structuredData.keywords.split(',')
+      : []),
+  ];
+  const tags = [...getTags($, selectors.tags), ...structuredTags]
+    .filter((tag) => typeof tag === 'string')
+    .map((tag) => tag.trim())
+    .filter((tag, index, values) => tag && values.indexOf(tag) === index);
+  const chapters = pages.flatMap((page) => {
+    const page$ = cheerio.load(page.html);
+    return parseChapters(page$, selectors.chapters, page.url);
+  });
+  const uniqueChapters = [];
+  const seenChapterUrls = new Set();
+  for (const chapter of chapters) {
+    if (!seenChapterUrls.has(chapter.url)) {
+      seenChapterUrls.add(chapter.url);
+      uniqueChapters.push(chapter);
+    }
+  }
+  if (uniqueChapters.every((chapter) => Number.isFinite(chapter.number))) {
+    uniqueChapters.sort((left, right) => left.number - right.number);
+  }
 
   return {
     title,
     author,
-    coverImageUrl: getCoverUrl($, selectors.cover, page.url),
+    coverImageUrl:
+      getCoverUrl($, selectors.cover, firstPage.url) ||
+      toAbsoluteUrl(
+        typeof structuredData.image === 'string'
+          ? structuredData.image
+          : Array.isArray(structuredData.image)
+            ? structuredData.image[0]
+            : structuredData.image?.url,
+        firstPage.url,
+      ),
     synopsis,
-    tags: getTags($, selectors.tags),
-    chapters: parseChapters($, selectors.chapters, page.url),
+    tags,
+    chapters: uniqueChapters,
   };
 }
 

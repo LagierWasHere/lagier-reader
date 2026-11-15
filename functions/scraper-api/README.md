@@ -45,4 +45,17 @@ Sample `200` Response:
 
 ## 🔒 Environment Variables
 
-No environment variables required.
+The function uses Appwrite TablesDB when these variables are configured:
+
+| Variable | Description |
+| -------- | ----------- |
+| `APPWRITE_DATABASE_ID` | TablesDB database ID |
+| `APPWRITE_PROJECT_ID` | Appwrite project ID |
+| `APPWRITE_API_KEY` | API key with read/write access to the tables |
+| `APPWRITE_NOVELS_TABLE_ID` | Novels table ID (defaults to `novels`) |
+| `APPWRITE_CHAPTERS_TABLE_ID` | Chapters table ID (defaults to `chapters`) |
+| `APPWRITE_ENDPOINT` | Appwrite API endpoint (defaults to `https://cloud.appwrite.io/v1`) |
+
+`MONGODB_URI` remains supported as a fallback for existing deployments. The TablesDB
+tables must include the fields written by the function, including `userId`, `url`,
+`title`, `author`, `synopsis`, `tags`, `chapters`, and the chapter content fields.
