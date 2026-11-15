@@ -398,6 +398,7 @@
         const API_BASE_URL = "https://lreadfunc.fra.appwrite.run";
         const LOCAL_LIBRARY_KEY = "lagier-reader-library";
         const SETTINGS_KEY = "lagier-reader-settings";
+        const USER_ID = localStorage.getItem("lr_user_id") || "guest_local";
         const state = {
           library: [],
           novel: null,
@@ -443,7 +444,11 @@
         async function api(path, options = {}) {
           const requestOptions = {
             ...options,
-            headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+            headers: {
+              "Content-Type": "application/json",
+              "X-User-Id": USER_ID,
+              ...(options.headers || {}),
+            },
           };
           let response;
           try {
@@ -522,8 +527,11 @@
           renderLibrary();
           try {
             const remoteLibrary = await api("/library");
-            if (Array.isArray(remoteLibrary)) {
-              state.library = remoteLibrary;
+            const remoteNovels = Array.isArray(remoteLibrary)
+              ? remoteLibrary
+              : remoteLibrary.novels;
+            if (Array.isArray(remoteNovels)) {
+              state.library = remoteNovels;
               saveLocalLibrary();
               renderLibrary();
             }
@@ -642,6 +650,7 @@
                 novelUrl: state.novel.url,
                 lastReadChapterUrl: chapter.url,
                 lastReadChapterTitle: state.novel.lastReadChapterTitle,
+                lastReadIndex: state.chapterIndex,
               }),
             }).catch(() => {});
             prefetchNextChapter();

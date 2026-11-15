@@ -303,6 +303,7 @@ async function fetchPage(url) {
   }
 
   const response = await fetch(parsedUrl, {
+    signal: AbortSignal.timeout(15000),
     redirect: 'follow',
     headers: {
       Accept: 'text/html,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8',
