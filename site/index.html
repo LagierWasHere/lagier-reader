@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Lagier Reader</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --panel: #111;
+        --panel-strong: #171717;
+        --text: #f3f3f3;
+        --muted: #8d8d8d;
+        --line: #272727;
+        --accent: #c9ff55;
+        --accent-ink: #101500;
+        --reading-bg: #0a0a0a;
+        --reading-text: #e8e8e8;
+        --reading-width: 760px;
+        --font-reading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+        background: var(--bg);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+
+      * { box-sizing: border-box; }
+      html { background: var(--bg); }
+      body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); }
+      button, input, select { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, select:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .app-shell { min-height: 100vh; }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        min-height: 64px;
+        padding: 12px clamp(16px, 4vw, 52px);
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--bg) 92%, transparent);
+        backdrop-filter: blur(16px);
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        flex: 0 0 auto;
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        text-decoration: none;
+      }
+      .brand-mark {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 70%, transparent);
+      }
+      .url-form { display: flex; flex: 1; gap: 8px; max-width: 760px; margin: auto; }
+      .url-form input {
+        width: 100%;
+        min-width: 0;
+        height: 38px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel);
+        color: var(--text);
+        font-size: 13px;
+      }
+      .url-form input::placeholder { color: #686868; }
+      .button {
+        min-height: 38px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .button:hover { border-color: #555; background: var(--panel-strong); }
+      .button-primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: var(--accent-ink);
+      }
+      .button-primary:hover { border-color: #dcff8c; background: #dcff8c; }
+      .button-quiet { border-color: transparent; color: var(--muted); }
+      .button-quiet:hover { color: var(--text); }
+
+      main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+      .view { padding: clamp(30px, 6vw, 76px) 0 90px; }
+      .view[hidden] { display: none; }
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .13em;
+        text-transform: uppercase;
+      }
+      h1, h2, p { margin-top: 0; }
+      h1 {
+        max-width: 750px;
+        margin-bottom: 12px;
+        font-size: clamp(34px, 6vw, 68px);
+        line-height: .98;
+        letter-spacing: -.065em;
+      }
+      .subhead { max-width: 520px; color: var(--muted); font-size: 15px; line-height: 1.6; }
+      .library-toolbar {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 25px;
+      }
+      .library-toolbar h2 { margin: 0; font-size: 20px; letter-spacing: -.03em; }
+      .library-count { color: var(--muted); font-size: 12px; }
+      .library-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+        gap: 12px;
+      }
+      .novel-card {
+        display: flex;
+        min-height: 205px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--panel);
+        transition: border-color .15s ease, transform .15s ease;
+      }
+      .novel-card:hover { border-color: #4a4a4a; transform: translateY(-2px); }
+      .novel-cover {
+        width: 92px;
+        flex: 0 0 92px;
+        object-fit: cover;
+        background: #1b1b1b;
+      }
+      .novel-cover.is-empty {
+        display: grid;
+        place-items: center;
+        padding: 12px;
+        color: #5b5b5b;
+        font-size: 22px;
+        font-weight: 800;
+      }
+      .novel-card-body { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 15px; }
+      .novel-title {
+        display: -webkit-box;
+        overflow: hidden;
+        margin: 0 0 6px;
+        font-size: 15px;
+        line-height: 1.25;
+        letter-spacing: -.02em;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+      }
+      .novel-author { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+      .novel-meta { margin-top: auto; color: #686868; font-size: 11px; }
+      .novel-card .button { align-self: flex-start; margin-top: 12px; }
+      .empty-state {
+        padding: 56px 20px;
+        border: 1px dashed var(--line);
+        border-radius: 9px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .reader-view { width: 100%; padding-top: 24px; }
+      .reader-shell { width: min(var(--reading-width), calc(100% - 32px)); margin: auto; }
+      .reader-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        padding-bottom: 22px;
+      }
+      .reader-top .button { padding-inline: 0; border: 0; }
+      .reader-top .button:hover { background: none; }
+      .reader-label { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      .reader-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 0 auto 34px;
+        padding: 9px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--panel);
+      }
+      .control-group { display: flex; align-items: center; gap: 4px; }
+      .control-label { margin: 0 5px 0 7px; color: var(--muted); font-size: 11px; }
+      .control-select, .control-button {
+        height: 30px;
+        padding: 0 9px;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--text);
+        font-size: 12px;
+      }
+      .control-select { border-color: var(--line); }
+      .control-button:hover, .control-button.is-active { background: var(--panel-strong); color: var(--accent); }
+      .chapter-heading { margin-bottom: 34px; }
+      .chapter-heading h1 { max-width: none; margin-bottom: 9px; font-size: clamp(28px, 5vw, 48px); letter-spacing: -.055em; }
+      .chapter-heading p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
+      .chapter-content {
+        color: var(--reading-text);
+        font-family: var(--font-reading);
+        font-size: 18px;
+        line-height: 1.82;
+        overflow-wrap: anywhere;
+      }
+      .chapter-content img { display: block; max-width: 100%; height: auto; margin: 24px auto; }
+      .chapter-content p { margin: 0 0 1.35em; }
+      .chapter-content h1, .chapter-content h2, .chapter-content h3 {
+        margin: 1.8em 0 .7em;
+        font-size: 1.25em;
+        letter-spacing: -.03em;
+      }
+      .chapter-content blockquote {
+        margin: 1.4em 0;
+        padding-left: 18px;
+        border-left: 2px solid var(--accent);
+        color: #b7b7b7;
+      }
+      .reader-footer { display: flex; justify-content: space-between; gap: 10px; padding: 45px 0 20px; }
+      .reader-footer .button { max-width: 48%; overflow: hidden; text-overflow: ellipsis; }
+      .reader-footer .button[disabled] { opacity: .35; cursor: default; }
+      .loading { color: var(--muted); }
+      .toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 50;
+        max-width: min(360px, calc(100vw - 36px));
+        padding: 11px 14px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #191919;
+        color: var(--text);
+        font-size: 12px;
+        box-shadow: 0 8px 30px #0008;
+      }
+      .toast[hidden] { display: none; }
+
+      body.theme-sepia { --reading-bg: #efe2c4; --reading-text: #493c2c; --bg: #efe2c4; --text: #493c2c; --panel: #e6d6b5; --panel-strong: #dcc9a6; --line: #c6b48f; --muted: #76664e; --accent: #876323; --accent-ink: #fff8e9; }
+      body.theme-paper { --reading-bg: #f4f4f0; --reading-text: #252525; --bg: #f4f4f0; --text: #252525; --panel: #e9e9e4; --panel-strong: #deded8; --line: #c9c9c2; --muted: #6f6f6a; --accent: #315d9b; --accent-ink: #fff; }
+      body.theme-sepia, body.theme-paper { color-scheme: light; }
+      body.theme-sepia .topbar, body.theme-paper .topbar { background: color-mix(in srgb, var(--bg) 92%, transparent); }
+      body.font-serif { --font-reading: Georgia, "Times New Roman", serif; }
+      body.font-mono { --font-reading: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+      body.font-large .chapter-content { font-size: 21px; }
+      body.font-small .chapter-content { font-size: 16px; }
+      @media (max-width: 620px) {
+        .topbar { flex-wrap: wrap; gap: 9px; }
+        .brand { width: 100%; }
+        .url-form { width: 100%; }
+        .library-toolbar { align-items: start; flex-direction: column; gap: 5px; }
+        .reader-controls { align-items: stretch; }
+        .control-group { flex: 1; }
+        .control-select { flex: 1; }
+        .chapter-content { font-size: 17px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" id="brand-link" aria-label="Go to library">
+          <span class="brand-mark" aria-hidden="true"></span>
+          lagier reader
+        </a>
+        <form class="url-form" id="novel-form">
+          <input id="novel-url" type="url" required placeholder="Paste a RoyalRoad, NovelPhoenix, Chikari.moe, or any novel URL" aria-label="Novel URL" />
+          <button class="button button-primary" type="submit">Add novel</button>
+        </form>
+      </header>
+
+      <main>
+        <section class="view" id="library-view">
+          <p class="eyebrow">Your library</p>
+          <h1>Read without the noise.</h1>
+          <p class="subhead">A fast, quiet reader for web novels. Add a story above and keep your progress in one place.</p>
+          <div class="library-toolbar">
+            <h2>Library</h2>
+            <span class="library-count" id="library-count"></span>
+          </div>
+          <div class="library-grid" id="library-grid"></div>
+        </section>
+
+        <section class="view reader-view" id="reader-view" hidden>
+          <div class="reader-shell">
+            <div class="reader-top">
+              <button class="button button-quiet" id="back-button" type="button">← Library</button>
+              <span class="reader-label" id="reader-novel-label"></span>
+            </div>
+            <div class="reader-controls" aria-label="Reader settings">
+              <div class="control-group">
+                <span class="control-label">Size</span>
+                <button class="control-button" id="font-decrease" type="button" aria-label="Decrease font size">A−</button>
+                <button class="control-button" id="font-increase" type="button" aria-label="Increase font size">A+</button>
+              </div>
+              <label class="control-group">
+                <span class="control-label">Font</span>
+                <select class="control-select" id="font-select">
+                  <option value="sans">Sans</option>
+                  <option value="serif">Serif</option>
+                  <option value="mono">Mono</option>
+                </select>
+              </label>
+              <label class="control-group">
+                <span class="control-label">Theme</span>
+                <select class="control-select" id="theme-select">
+                  <option value="amoled">AMOLED Dark</option>
+                  <option value="sepia">Sepia</option>
+                  <option value="paper">Paper</option>
+                </select>
+              </label>
+            </div>
+            <div class="chapter-heading">
+              <p class="eyebrow" id="chapter-number"></p>
+              <h1 id="chapter-title">Loading chapter…</h1>
+              <p id="chapter-author"></p>
+            </div>
+            <article class="chapter-content" id="chapter-content">
+              <p class="loading">Loading chapter…</p>
+            </article>
+            <nav class="reader-footer" aria-label="Chapter navigation">
+              <button class="button" id="previous-button" type="button">← Previous</button>
+              <button class="button button-primary" id="next-button" type="button">Next Chapter →</button>
+            </nav>
+          </div>
+        </section>
+      </main>
+      <div class="toast" id="toast" hidden role="status"></div>
+    </div>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const API_BASE = window.SCRAPER_API_URL || "/api";
+        const LOCAL_LIBRARY_KEY = "lagier-reader-library";
+        const SETTINGS_KEY = "lagier-reader-settings";
+        const state = {
+          library: [],
+          novel: null,
+          chapterIndex: -1,
+          chapterCache: new Map(),
+          loadingChapter: false,
+        };
+        const $ = (selector) => document.querySelector(selector);
+        const libraryView = $("#library-view");
+        const readerView = $("#reader-view");
+        const toast = $("#toast");
+
+        function showToast(message) {
+          toast.textContent = message;
+          toast.hidden = false;
+          clearTimeout(showToast.timer);
+          showToast.timer = setTimeout(() => { toast.hidden = true; }, 3600);
+        }
+
+        function loadLocalLibrary() {
+          try {
+            return JSON.parse(localStorage.getItem(LOCAL_LIBRARY_KEY) || "[]");
+          } catch {
+            return [];
+          }
+        }
+
+        function saveLocalLibrary() {
+          localStorage.setItem(LOCAL_LIBRARY_KEY, JSON.stringify(state.library));
+        }
+
+        async function api(path, options = {}) {
+          const response = await fetch(`${API_BASE}${path}`, {
+            ...options,
+            headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+          return body;
+        }
+
+        function escapeHtml(value) {
+          return String(value || "").replace(/[&<>"']/g, (character) => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+          }[character]));
+        }
+
+        function chapterPosition(novel) {
+          const savedUrl = novel?.lastReadChapterUrl;
+          const index = savedUrl ? novel.chapters?.findIndex((chapter) => chapter.url === savedUrl) : -1;
+          return index >= 0 ? index : 0;
+        }
+
+        function renderLibrary() {
+          $("#library-count").textContent = `${state.library.length} ${state.library.length === 1 ? "novel" : "novels"}`;
+          if (!state.library.length) {
+            $("#library-grid").innerHTML = '<div class="empty-state">Your library is empty. Paste a novel URL above to begin.</div>';
+            return;
+          }
+          $("#library-grid").innerHTML = state.library.map((novel, index) => {
+            const chapters = novel.chapters || [];
+            const position = Math.min(chapterPosition(novel), Math.max(chapters.length - 1, 0));
+            const cover = novel.coverImageUrl
+              ? `<img class="novel-cover" src="${escapeHtml(novel.coverImageUrl)}" alt="" loading="lazy">`
+              : `<div class="novel-cover is-empty" aria-hidden="true">LR</div>`;
+            return `
+              <article class="novel-card">
+                ${cover}
+                <div class="novel-card-body">
+                  <h3 class="novel-title">${escapeHtml(novel.title || "Untitled novel")}</h3>
+                  <p class="novel-author">${escapeHtml(novel.author || "Unknown author")}</p>
+                  <div class="novel-meta">${chapters.length} ${chapters.length === 1 ? "chapter" : "chapters"}</div>
+                  <button class="button button-primary continue-button" type="button" data-index="${index}" ${chapters.length ? "" : "disabled"}>Continue Reading</button>
+                </div>
+              </article>`;
+          }).join("");
+          document.querySelectorAll(".continue-button").forEach((button) => {
+            button.addEventListener("click", () => openNovel(state.library[Number(button.dataset.index)]));
+          });
+        }
+
+        async function loadLibrary() {
+          state.library = loadLocalLibrary();
+          renderLibrary();
+          try {
+            const remoteLibrary = await api("/library");
+            if (Array.isArray(remoteLibrary)) {
+              state.library = remoteLibrary;
+              saveLocalLibrary();
+              renderLibrary();
+            }
+          } catch {
+            if (state.library.length) showToast("Offline mode: showing your saved library.");
+          }
+        }
+
+        async function addNovel(event) {
+          event.preventDefault();
+          const input = $("#novel-url");
+          const url = input.value.trim();
+          if (!url) return;
+          const button = event.submitter || event.target.querySelector("button");
+          button.disabled = true;
+          button.textContent = "Adding…";
+          try {
+            let novel;
+            try {
+              novel = await api("/novel", { method: "POST", body: JSON.stringify({ url }) });
+            } catch (remoteError) {
+              if (!window.confirm(`The scraper API is unavailable. Save this URL for later?\n\n${remoteError.message}`)) throw remoteError;
+              novel = { url, title: new URL(url).hostname, author: "", chapters: [] };
+            }
+            const existing = state.library.findIndex((item) => item.url === novel.url);
+            if (existing >= 0) state.library[existing] = novel;
+            else state.library.unshift(novel);
+            saveLocalLibrary();
+            input.value = "";
+            renderLibrary();
+            showToast("Novel added to your library.");
+          } catch (error) {
+            showToast(error.message || "Could not add that novel.");
+          } finally {
+            button.disabled = false;
+            button.textContent = "Add novel";
+          }
+        }
+
+        async function getChapter(url) {
+          if (state.chapterCache.has(url)) return state.chapterCache.get(url);
+          const chapter = await api(`/chapter?url=${encodeURIComponent(url)}`);
+          state.chapterCache.set(url, chapter);
+          return chapter;
+        }
+
+        function prefetchNextChapter() {
+          const next = state.novel?.chapters?.[state.chapterIndex + 1];
+          if (!next || state.chapterCache.has(next.url)) return;
+          getChapter(next.url).catch(() => {});
+        }
+
+        async function openChapter(index) {
+          const chapters = state.novel?.chapters || [];
+          if (index < 0 || index >= chapters.length || state.loadingChapter) return;
+          state.loadingChapter = true;
+          state.chapterIndex = index;
+          const chapter = chapters[index];
+          $("#chapter-number").textContent = `Chapter ${chapter.number ?? index + 1}`;
+          $("#chapter-title").textContent = chapter.title || "Untitled chapter";
+          $("#chapter-content").innerHTML = '<p class="loading">Loading chapter…</p>';
+          $("#previous-button").disabled = index === 0;
+          $("#next-button").disabled = index === chapters.length - 1;
+          window.scrollTo({ top: 0, behavior: "instant" });
+          try {
+            const content = await getChapter(chapter.url);
+            $("#chapter-title").textContent = content.title || chapter.title || "Untitled chapter";
+            $("#chapter-content").innerHTML = content.content || `<p>${escapeHtml(content.text || "This chapter is empty.")}</p>`;
+            state.novel.lastReadChapterUrl = chapter.url;
+            state.novel.lastReadChapterTitle = content.title || chapter.title || "";
+            const novelIndex = state.library.findIndex((item) => item.url === state.novel.url);
+            if (novelIndex >= 0) state.library[novelIndex] = state.novel;
+            saveLocalLibrary();
+            api("/progress", {
+              method: "POST",
+              body: JSON.stringify({
+                novelUrl: state.novel.url,
+                lastReadChapterUrl: chapter.url,
+                lastReadChapterTitle: state.novel.lastReadChapterTitle,
+              }),
+            }).catch(() => {});
+            prefetchNextChapter();
+          } catch (error) {
+            $("#chapter-content").innerHTML = `<p>${escapeHtml(error.message || "Could not load this chapter.")}</p>`;
+            showToast("Could not load chapter.");
+          } finally {
+            state.loadingChapter = false;
+          }
+        }
+
+        function openNovel(novel) {
+          if (!novel?.chapters?.length) {
+            showToast("This novel has no chapters yet.");
+            return;
+          }
+          state.novel = novel;
+          state.chapterCache = new Map();
+          $("#reader-novel-label").textContent = novel.title || novel.url;
+          libraryView.hidden = true;
+          readerView.hidden = false;
+          openChapter(chapterPosition(novel));
+        }
+
+        function showLibrary() {
+          readerView.hidden = true;
+          libraryView.hidden = false;
+          state.novel = null;
+          window.scrollTo({ top: 0, behavior: "instant" });
+        }
+
+        function loadSettings() {
+          let settings = {};
+          try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch {}
+          const font = settings.font || "sans";
+          const theme = settings.theme || "amoled";
+          document.body.classList.add(`font-${font}`, `theme-${theme}`);
+          $("#font-select").value = font;
+          $("#theme-select").value = theme;
+          if (settings.size) document.body.classList.add(`font-${settings.size}`);
+        }
+
+        function saveSettings() {
+          const font = $("#font-select").value;
+          const theme = $("#theme-select").value;
+          const size = document.body.classList.contains("font-large") ? "large" : document.body.classList.contains("font-small") ? "small" : "normal";
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify({ font, theme, size }));
+        }
+
+        $("#novel-form").addEventListener("submit", addNovel);
+        $("#brand-link").addEventListener("click", (event) => { event.preventDefault(); showLibrary(); });
+        $("#back-button").addEventListener("click", showLibrary);
+        $("#previous-button").addEventListener("click", () => openChapter(state.chapterIndex - 1));
+        $("#next-button").addEventListener("click", () => openChapter(state.chapterIndex + 1));
+        $("#font-select").addEventListener("change", (event) => {
+          document.body.classList.remove("font-sans", "font-serif", "font-mono");
+          document.body.classList.add(`font-${event.target.value}`);
+          saveSettings();
+        });
+        $("#theme-select").addEventListener("change", (event) => {
+          document.body.classList.remove("theme-amoled", "theme-sepia", "theme-paper");
+          document.body.classList.add(`theme-${event.target.value}`);
+          saveSettings();
+        });
+        $("#font-increase").addEventListener("click", () => {
+          document.body.classList.remove("font-small");
+          document.body.classList.add("font-large");
+          saveSettings();
+        });
+        $("#font-decrease").addEventListener("click", () => {
+          document.body.classList.remove("font-large");
+          document.body.classList.add("font-small");
+          saveSettings();
+        });
+        window.addEventListener("scroll", () => {
+          if (readerView.hidden || !state.novel) return;
+          const progress = (window.scrollY + window.innerHeight) / document.documentElement.scrollHeight;
+          if (progress >= .7) prefetchNextChapter();
+        }, { passive: true });
+
+        loadSettings();
+        loadLibrary();
+      })();
+    </script>
+  </body>
+</html>
