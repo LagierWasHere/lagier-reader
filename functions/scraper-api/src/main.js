@@ -23,18 +23,15 @@ function respond(res, body, status = 200) {
 }
 
 function getBody(req) {
-  if (req.bodyJson && typeof req.bodyJson === 'object') {
-    return req.bodyJson;
-  }
-
   if (!req.bodyRaw) {
     return {};
   }
 
   try {
-    return JSON.parse(req.bodyRaw);
+    const body = req.bodyJson;
+    return body && typeof body === 'object' ? body : {};
   } catch {
-    throw new HttpError(400, 'Request body must be valid JSON');
+    return {};
   }
 }
 
@@ -55,12 +52,12 @@ function getRequiredUrl(value, fieldName) {
 }
 
 function getUserId(req, body = getBody(req)) {
+  const queryUserId = req.query?.userId;
   const headerUserId =
     req.headers?.['x-user-id'] ||
     req.headers?.['X-User-Id'] ||
     req.headers?.['X-User-ID'];
-  const queryUserId = req.query?.userId;
-  const userId = headerUserId || queryUserId || body.userId || 'guest_local';
+  const userId = queryUserId || body.userId || headerUserId || 'guest';
 
   if (typeof userId !== 'string' || !userId.trim()) {
     throw new HttpError(400, 'userId must be a non-empty string');
@@ -306,7 +303,7 @@ async function updateProgress(req, res) {
   return respond(res, result);
 }
 
-async function handleRequest(req, res) {
+async function handleRequest(req, res, log, error) {
   if (req.method === 'OPTIONS') {
     return respond(res, {}, 204);
   }
@@ -315,33 +312,46 @@ async function handleRequest(req, res) {
   const path = getPath(req);
 
   if (req.method === 'GET' && path === '/library') {
-    return getLibrary(req, res);
+    return handleRoute(getLibrary, req, res, log, error);
   }
   if (req.method === 'POST' && path === '/novel') {
-    return saveNovel(req, res);
+    return handleRoute(saveNovel, req, res, log, error);
   }
   if (req.method === 'DELETE' && path === '/novel') {
-    return deleteNovel(req, res);
+    return handleRoute(deleteNovel, req, res, log, error);
   }
   if (req.method === 'GET' && path === '/chapter') {
-    return getChapter(req, res);
+    return handleRoute(getChapter, req, res, log, error);
   }
   if (req.method === 'POST' && path === '/progress') {
-    return updateProgress(req, res);
+    return handleRoute(updateProgress, req, res, log, error);
   }
 
   throw new HttpError(404, 'Route not found');
 }
 
-module.exports = async ({ req, res, log, error }) => {
+async function handleRoute(handler, req, res, log, error) {
   try {
-    return await handleRequest(req, res);
+    return await handler(req, res);
   } catch (caughtError) {
     const status = caughtError.status || 500;
     const message = status === 500 ? 'Internal server error' : caughtError.message;
 
     error(caughtError.stack || caughtError.message);
-    log(`${req.method} ${req.path || '/'} failed with status ${status}`);
+    log(`${req.method} ${req.path || '/'} failed with status ${status}: ${message}`);
+    return respond(res, { error: message }, status);
+  }
+}
+
+module.exports = async ({ req, res, log, error }) => {
+  try {
+    return await handleRequest(req, res, log, error);
+  } catch (caughtError) {
+    const status = caughtError.status || 500;
+    const message = status === 500 ? 'Internal server error' : caughtError.message;
+
+    error(caughtError.stack || caughtError.message);
+    log(`${req.method} ${req.path || '/'} failed with status ${status}: ${message}`);
     return respond(res, { error: message }, status);
   }
 };
