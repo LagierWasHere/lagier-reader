@@ -1,5 +1,4 @@
 const {
-  connectToDatabase,
   getChaptersCollection,
   getNovelsCollection,
 } = require('./db');
@@ -94,22 +93,63 @@ async function normalizeNovelDocument(novels, novel, userId) {
     return novel;
   }
 
-  const chapters = normalizeChapters(novel.chapters, novel.url);
+  let chapters = normalizeChapters(novel.chapters, novel.url);
+  let metadata = novel;
+  if (chapters.length < 100 || !novel.author || !novel.synopsis) {
+    try {
+      const scraped = await scrapeNovel(novel.url);
+      if (
+        scraped.chapters.length > chapters.length ||
+        !novel.author ||
+        !novel.synopsis ||
+        !Array.isArray(novel.tags) ||
+        !novel.tags.length
+      ) {
+        chapters = normalizeChapters(scraped.chapters, novel.url);
+        metadata = {
+          ...novel,
+          title: scraped.title || novel.title,
+          author: scraped.author || novel.author || '',
+          coverImageUrl: scraped.coverImageUrl || novel.coverImageUrl,
+          cover: scraped.coverImageUrl || novel.cover,
+          synopsis: scraped.synopsis || novel.synopsis || '',
+          tags: scraped.tags.length ? scraped.tags : novel.tags || [],
+        };
+      }
+    } catch {
+      // Return the cached document when refreshing the source is unavailable.
+    }
+  }
+
   const changed =
-    novel.userId !== userId ||
+    metadata.userId !== userId ||
     chapters.length !== (novel.chapters || []).length ||
-    chapters.some((chapter, index) => chapter.url !== novel.chapters[index]?.url);
+    chapters.some((chapter, index) => chapter.url !== novel.chapters[index]?.url) ||
+    metadata.author !== novel.author ||
+    metadata.synopsis !== novel.synopsis ||
+    metadata.title !== novel.title ||
+    metadata.coverImageUrl !== novel.coverImageUrl ||
+    metadata.cover !== novel.cover ||
+    JSON.stringify(metadata.tags || []) !== JSON.stringify(novel.tags || []);
 
   if (!changed) {
     return novel;
   }
 
   const updatedAt = new Date();
-  await novels.updateOne(
-    { _id: novel._id },
-    { $set: { userId, chapters, updatedAt } },
-  );
-  return { ...novel, userId, chapters, updatedAt };
+  const updated = {
+    ...metadata,
+    userId,
+    chapters,
+    updatedAt,
+  };
+  try {
+    const { _id, ...persisted } = updated;
+    await novels.updateOne({ _id: novel._id }, { $set: persisted });
+  } catch {
+    // Keep serving the refreshed document even if the cache cannot be updated.
+  }
+  return updated;
 }
 
 function getPath(req) {
@@ -123,18 +163,31 @@ function getPath(req) {
 }
 
 async function getLibrary(req, res) {
-  const novels = await getNovelsCollection();
   const userId = getUserId(req);
-  const filter =
-    userId === 'guest_local'
-      ? { $or: [{ userId }, { userId: { $exists: false } }] }
-      : { userId };
-  const documents = await novels
-    .find(filter)
-    .sort({ updatedAt: -1 })
-    .toArray();
+  let novels;
+  let documents;
+  try {
+    novels = await getNovelsCollection();
+    const filter =
+      userId === 'guest_local'
+        ? { $or: [{ userId }, { userId: { $exists: false } }] }
+        : { userId };
+    documents = await novels
+      .find(filter)
+      .sort({ updatedAt: -1 })
+      .toArray();
+  } catch {
+    return respond(res, { novels: [] });
+  }
+
   const normalizedDocuments = await Promise.all(
-    documents.map((novel) => normalizeNovelDocument(novels, novel, userId)),
+    documents.map(async (novel) => {
+      try {
+        return await normalizeNovelDocument(novels, novel, userId);
+      } catch {
+        return novel;
+      }
+    }),
   );
   return respond(res, { novels: normalizedDocuments });
 }
@@ -145,38 +198,40 @@ async function saveNovel(req, res) {
   const url = getRequiredUrl(body.url, 'url');
   const metadata = await scrapeNovel(url);
   const now = new Date();
-  const novels = await getNovelsCollection();
-  const legacyNovel =
-    userId === 'guest_local'
-      ? await novels.findOne({ url, userId: { $exists: false } })
-      : null;
+  const novelData = {
+    userId,
+    url,
+    title: metadata.title,
+    author: metadata.author,
+    coverImageUrl: metadata.coverImageUrl,
+    cover: metadata.coverImageUrl,
+    synopsis: metadata.synopsis || '',
+    tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+    chapters: normalizeChapters(metadata.chapters, url),
+    updatedAt: now,
+  };
 
-  const result = await novels.findOneAndUpdate(
-    legacyNovel ? { _id: legacyNovel._id } : { userId, url },
-    {
-      $set: {
-        userId,
-        url,
-        title: metadata.title,
-        author: metadata.author,
-        coverImageUrl: metadata.coverImageUrl,
-        cover: metadata.coverImageUrl,
-        synopsis: metadata.synopsis || '',
-        tags: Array.isArray(metadata.tags) ? metadata.tags : [],
-        chapters: normalizeChapters(metadata.chapters, url),
-        updatedAt: now,
+  try {
+    const novels = await getNovelsCollection();
+    const legacyNovel =
+      userId === 'guest_local'
+        ? await novels.findOne({ url, userId: { $exists: false } })
+        : null;
+    const result = await novels.findOneAndUpdate(
+      legacyNovel ? { _id: legacyNovel._id } : { userId, url },
+      {
+        $set: novelData,
+        $setOnInsert: { createdAt: now },
       },
-      $setOnInsert: {
-        createdAt: now,
+      {
+        returnDocument: 'after',
+        upsert: true,
       },
-    },
-    {
-      returnDocument: 'after',
-      upsert: true,
-    },
-  );
-
-  return respond(res, result);
+    );
+    return respond(res, result);
+  } catch {
+    return respond(res, novelData);
+  }
 }
 
 async function deleteNovel(req, res) {
@@ -210,13 +265,19 @@ async function resolveChapterUrl(req, rawUrl) {
       }
     }
 
-    const novels = await getNovelsCollection();
-    const novel = await novels.findOne({ 'chapters.url': rawUrl.trim() });
-    if (novel) {
-      const chapter = (novel.chapters || []).find((item) => item.url === rawUrl.trim());
-      if (chapter) {
-        return getRequiredUrl(new URL(chapter.url, novel.url).toString(), 'url');
+    try {
+      const novels = await getNovelsCollection();
+      const novel = await novels.findOne({ 'chapters.url': rawUrl.trim() });
+      if (novel) {
+        const chapter = (novel.chapters || []).find(
+          (item) => item.url === rawUrl.trim(),
+        );
+        if (chapter) {
+          return getRequiredUrl(new URL(chapter.url, novel.url).toString(), 'url');
+        }
       }
+    } catch {
+      // Storage is optional for resolving an absolute or relative chapter URL.
     }
 
     throw error;
@@ -226,36 +287,45 @@ async function resolveChapterUrl(req, rawUrl) {
 async function getChapter(req, res) {
   getUserId(req);
   const url = await resolveChapterUrl(req, req.query?.url);
-  const chapters = await getChaptersCollection();
-  const cachedChapter = await chapters.findOne({ url });
-
-  if (cachedChapter) {
-    return respond(res, cachedChapter);
+  let chapters;
+  try {
+    chapters = await getChaptersCollection();
+    const cachedChapter = await chapters.findOne({ url });
+    if (cachedChapter) {
+      return respond(res, cachedChapter);
+    }
+  } catch {
+    chapters = null;
   }
 
   const chapter = await scrapeChapter(url);
-  const now = new Date();
-  const result = await chapters.findOneAndUpdate(
-    { url },
-    {
-      $set: {
-        url,
-        title: chapter.title,
-        content: chapter.content,
-        text: chapter.text,
-        updatedAt: now,
-      },
-      $setOnInsert: {
-        createdAt: now,
-      },
-    },
-    {
-      returnDocument: 'after',
-      upsert: true,
-    },
-  );
+  if (!chapters) {
+    return respond(res, chapter);
+  }
 
-  return respond(res, result);
+  const now = new Date();
+  try {
+    const result = await chapters.findOneAndUpdate(
+      { url },
+      {
+        $set: {
+          url,
+          title: chapter.title,
+          content: chapter.content,
+          text: chapter.text,
+          updatedAt: now,
+        },
+        $setOnInsert: { createdAt: now },
+      },
+      {
+        returnDocument: 'after',
+        upsert: true,
+      },
+    );
+    return respond(res, result);
+  } catch {
+    return respond(res, chapter);
+  }
 }
 
 async function updateProgress(req, res) {
@@ -307,7 +377,6 @@ async function handleRequest(req, res, log, error) {
     return respond(res, {}, 204);
   }
 
-  await connectToDatabase();
   const path = getPath(req);
 
   if (req.method === 'GET' && path === '/library') {

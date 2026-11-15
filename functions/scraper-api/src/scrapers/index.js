@@ -333,10 +333,12 @@ function getPaginationLinks($, baseUrl) {
     const paginationContainer = link.closest(
       '.pagination, .pager, .page-numbers, .nav-links, [class*="pagination"], [class*="pager"]',
     );
+    const pageNumber = getPageNumber(url);
     const isPaginationLink =
       rel.includes('next') ||
       rel.includes('prev') ||
       paginationContainer.length > 0 ||
+      Boolean(pageNumber) ||
       /\b(first|last|next|prev|previous|older|newer)\b/.test(text) ||
       /\b(next|prev|previous|older|newer)\b/.test(className);
 
@@ -346,6 +348,7 @@ function getPaginationLinks($, baseUrl) {
         url,
         text,
         rel,
+        pageNumber,
         isLast: /\blast\b/.test(text) || /\blast\b/.test(className),
         isNext: rel.includes('next') || /\bnext\b/.test(text) || /\bnext\b/.test(className),
       });
@@ -400,6 +403,13 @@ function getPaginatedPageUrls($, baseUrl) {
     return pageUrls;
   }
 
+  const numberedPages = links
+    .filter((link) => link.pageNumber)
+    .map((link) => link.url);
+  if (numberedPages.length) {
+    return numberedPages;
+  }
+
   return nextLink ? [nextLink.url] : [];
 }
 
@@ -417,34 +427,27 @@ async function fetchPaginatedPages(firstPage) {
       break;
     }
 
-    if (pageUrls.length > 1) {
-      const additionalPages = await Promise.all(
-        pageUrls
-          .filter((url) => !visitedUrls.has(url))
-          .map(async (url) => {
-            try {
-              return await fetchPage(url);
-            } catch {
-              return null;
-            }
-          }),
-      );
-      pages.push(...additionalPages.filter(Boolean));
+    const newPageUrls = pageUrls.filter((url) => !visitedUrls.has(url));
+    if (!newPageUrls.length) {
       break;
     }
 
-    const nextUrl = pageUrls[0];
-    if (visitedUrls.has(nextUrl)) {
+    const additionalPages = await Promise.all(
+      newPageUrls.map(async (url) => {
+        try {
+          return await fetchPage(url);
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const fetchedPages = additionalPages.filter(Boolean);
+    pages.push(...fetchedPages);
+    fetchedPages.forEach((page) => visitedUrls.add(page.url));
+    if (fetchedPages.length !== newPageUrls.length || fetchedPages.length > 1) {
       break;
     }
-
-    try {
-      currentPage = await fetchPage(nextUrl);
-    } catch {
-      break;
-    }
-    visitedUrls.add(nextUrl);
-    pages.push(currentPage);
+    currentPage = fetchedPages[0];
   }
 
   return pages;

@@ -59,6 +59,18 @@ function deserializeData(data, rowId) {
   return result;
 }
 
+function getRowData(row) {
+  if (row.data && typeof row.data === 'object') {
+    return row.data;
+  }
+
+  const data = { ...row };
+  for (const field of ['$id', '$createdAt', '$updatedAt', '$permissions']) {
+    delete data[field];
+  }
+  return data;
+}
+
 function getNestedValue(document, path) {
   return path.split('.').reduce((value, part) => value?.[part], document);
 }
@@ -119,7 +131,7 @@ class TablesCollection {
     while (true) {
       const payload = await this.request('GET', `?limit=100&offset=${offset}`);
       const page = Array.isArray(payload.rows) ? payload.rows : [];
-      rows.push(...page.map((row) => deserializeData(row.data || {}, row.$id)));
+      rows.push(...page.map((row) => deserializeData(getRowData(row), row.$id)));
       if (page.length < 100) {
         return rows;
       }
@@ -192,7 +204,7 @@ class TablesCollection {
           rowId,
           data: serializeData(data),
         });
-    return deserializeData(payload.data || data, payload.$id || rowId);
+    return deserializeData(getRowData(payload), payload.$id || rowId);
   }
 
   async deleteOne(filter) {
