@@ -81,6 +81,18 @@
         font-size: 13px;
       }
       .url-form input::placeholder { color: #686868; }
+      .api-settings { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+      .api-settings input {
+        width: 170px;
+        height: 30px;
+        padding: 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: var(--panel);
+        color: var(--text);
+        font-size: 10px;
+      }
+      .api-settings .button { min-height: 30px; padding: 0 8px; font-size: 10px; }
       .button {
         min-height: 38px;
         padding: 0 14px;
@@ -292,6 +304,11 @@
           <input id="novel-url" type="url" required placeholder="Paste a RoyalRoad, NovelPhoenix, Chikari.moe, or any novel URL" aria-label="Novel URL" />
           <button class="button button-primary" type="submit">Add novel</button>
         </form>
+        <label class="api-settings" title="Scraper API endpoint">
+          API
+          <input id="api-base-url" type="url" spellcheck="false" aria-label="Scraper API URL" />
+          <button class="button" id="save-api-url" type="button">Save</button>
+        </label>
       </header>
 
       <main>
@@ -357,10 +374,7 @@
       (() => {
         "use strict";
 
-        const configuredApiBase = window.SCRAPER_API_URL
-          || document.querySelector('meta[name="scraper-api-url"]')?.content
-          || "/api";
-        const API_BASE = configuredApiBase.replace(/\/+$/, "");
+        const API_BASE_URL = "https://lreadfunc.fra.appwrite.run";
         const LOCAL_LIBRARY_KEY = "lagier-reader-library";
         const SETTINGS_KEY = "lagier-reader-settings";
         const state = {
@@ -394,13 +408,33 @@
           localStorage.setItem(LOCAL_LIBRARY_KEY, JSON.stringify(state.library));
         }
 
+        function getApiBaseUrl() {
+          let settings = {};
+          try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch {}
+          const configured = settings.apiBaseUrl || window.SCRAPER_API_URL || API_BASE_URL;
+          return configured.trim().replace(/\/+$/, "");
+        }
+
+        function apiUrl(path) {
+          return `${getApiBaseUrl()}/${String(path).replace(/^\/+/, "")}`;
+        }
+
         async function api(path, options = {}) {
-          const response = await fetch(`${API_BASE}${path}`, {
+          const requestOptions = {
             ...options,
             headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-          });
+          };
+          let response;
+          try {
+            response = await fetch(apiUrl(path), requestOptions);
+          } catch (error) {
+            throw new Error(`Scraper API unavailable at ${getApiBaseUrl()}: ${error.message}`);
+          }
           const body = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+          if (!response.ok) {
+            const detail = body.error || body.message || response.statusText || "Unknown error";
+            throw new Error(`Scraper API ${response.status}: ${detail}`);
+          }
           return body;
         }
 
@@ -569,6 +603,7 @@
           document.body.classList.add(`font-${font}`, `theme-${theme}`);
           $("#font-select").value = font;
           $("#theme-select").value = theme;
+          $("#api-base-url").value = getApiBaseUrl();
           if (settings.size) document.body.classList.add(`font-${settings.size}`);
         }
 
@@ -576,10 +611,28 @@
           const font = $("#font-select").value;
           const theme = $("#theme-select").value;
           const size = document.body.classList.contains("font-large") ? "large" : document.body.classList.contains("font-small") ? "small" : "normal";
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify({ font, theme, size }));
+          let settings = {};
+          try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch {}
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, font, theme, size }));
+        }
+
+        function saveApiBaseUrl() {
+          const input = $("#api-base-url");
+          const value = input.value.trim().replace(/\/+$/, "");
+          try {
+            const url = new URL(value);
+            if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+            const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...settings, apiBaseUrl: value }));
+            input.value = value;
+            showToast("Scraper API URL saved.");
+          } catch {
+            showToast("Enter a valid HTTP(S) scraper API URL.");
+          }
         }
 
         $("#novel-form").addEventListener("submit", addNovel);
+        $("#save-api-url").addEventListener("click", saveApiBaseUrl);
         $("#brand-link").addEventListener("click", (event) => { event.preventDefault(); showLibrary(); });
         $("#back-button").addEventListener("click", showLibrary);
         $("#previous-button").addEventListener("click", () => openChapter(state.chapterIndex - 1));
