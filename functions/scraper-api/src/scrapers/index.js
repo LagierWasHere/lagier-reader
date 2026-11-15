@@ -17,16 +17,40 @@ const DOMAIN_SELECTORS = {
     content: ['.chapter-inner', '.chapter-content-inner', '.chapter-content', 'article'],
   },
   novelphoenix: {
-    title: ['.novel-title', '.book-title', 'h1'],
-    author: ['.novel-author', '.book-author', '[rel="author"]', '[class*="author"]'],
-    cover: ['.novel-cover img', '.book-cover img', 'meta[property="og:image"]'],
+    title: ['.novel-title', '.book-title', '.entry-title', 'h1'],
+    author: [
+      '.novel-author',
+      '.book-author',
+      '.author',
+      '[rel="author"]',
+      '[class*="author"]',
+      'meta[name="author"]',
+    ],
+    cover: [
+      '.novel-cover img',
+      '.book-cover img',
+      '.novel-thumbnail img',
+      'meta[property="og:image"]',
+      'meta[name="twitter:image"]',
+    ],
     chapters: [
       '.chapter-list a[href]',
       '.chapters a[href]',
+      '#chapter-list a[href]',
+      '#list a[href]',
+      '.entry-content a[href]',
       'a[href*="/chapter/"]',
       'a[href*="/read/"]',
     ],
-    content: ['.chapter-content', '.entry-content', 'article', 'main'],
+    content: [
+      '.chapter-content',
+      '#chapter-content',
+      '.reading-content',
+      '.entry-content',
+      '.post-content',
+      'article',
+      'main',
+    ],
   },
   chikari: {
     title: ['.novel-title', '.book-title', 'h1'],
@@ -51,6 +75,8 @@ const DOMAIN_SELECTORS = {
     chapters: [
       '.chapter-list a[href]',
       '.chapters a[href]',
+      '#chapter-list a[href]',
+      '#list a[href]',
       '[class*="chapter"] a[href]',
       '[class*="episode"] a[href]',
     ],
@@ -59,6 +85,8 @@ const DOMAIN_SELECTORS = {
       '[class*="chapter-content"]',
       '[class*="chapter-body"]',
       '.entry-content',
+      '.post-content',
+      '#content',
       'main',
     ],
   },
@@ -77,6 +105,18 @@ function getSiteKey(url) {
     return 'chikari';
   }
   return 'generic';
+}
+
+function canonicalizeUrl(url) {
+  const parsedUrl = new URL(url);
+  const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, '');
+  const legacyMatch = parsedUrl.pathname.match(/^\/novel\/([^/]+)\/?$/i);
+
+  if (hostname === 'novelphoenix.com' && legacyMatch) {
+    return `https://novelphoenix.net/${legacyMatch[1]}.html`;
+  }
+
+  return parsedUrl.href;
 }
 
 function toAbsoluteUrl(value, baseUrl) {
@@ -130,6 +170,22 @@ function parseChapterNumber(title, url, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function isChapterLink(title, href, baseUrl) {
+  const normalizedTitle = title.toLowerCase();
+  const normalizedHref = href.toLowerCase();
+  const basePath = new URL(baseUrl).pathname.replace(/\/+$/, '').toLowerCase();
+
+  if (normalizedHref === baseUrl.toLowerCase() || new URL(href).pathname === basePath) {
+    return false;
+  }
+
+  return (
+    /\b(chapter|chap|ch\.?|episode|ep\.?|part|volume|vol\.?)\b/i.test(title) ||
+    /(?:chapter|chap|episode|ep|volume|vol)[-_/.]?\d/i.test(normalizedHref) ||
+    /\b\d+(?:\.\d+)?\b/.test(normalizedTitle)
+  );
+}
+
 function parseChapters($, selectors, baseUrl) {
   const chapters = [];
   const seenUrls = new Set();
@@ -144,7 +200,7 @@ function parseChapters($, selectors, baseUrl) {
         link.attr('aria-label') ||
         '';
 
-      if (!href || !title || seenUrls.has(href)) {
+      if (!href || !title || seenUrls.has(href) || !isChapterLink(title, href, baseUrl)) {
         return;
       }
 
@@ -161,13 +217,36 @@ function parseChapters($, selectors, baseUrl) {
     }
   }
 
+  if (!chapters.length) {
+    $('a[href]').each((_, element) => {
+      const link = $(element);
+      const href = toAbsoluteUrl(link.attr('href'), baseUrl);
+      const title = link.text().replace(/\s+/g, ' ').trim();
+
+      if (!href || !title || seenUrls.has(href) || !isChapterLink(title, href, baseUrl)) {
+        return;
+      }
+
+      seenUrls.add(href);
+      chapters.push({
+        title,
+        url: href,
+        number: parseChapterNumber(title, href, chapters.length + 1),
+      });
+    });
+  }
+
+  if (chapters.length > 1 && chapters.every((chapter) => Number.isFinite(chapter.number))) {
+    chapters.sort((left, right) => left.number - right.number);
+  }
+
   return chapters;
 }
 
 async function fetchPage(url) {
   let parsedUrl;
   try {
-    parsedUrl = new URL(url);
+    parsedUrl = new URL(canonicalizeUrl(url));
   } catch {
     throw new TypeError(`Invalid URL: ${url}`);
   }
@@ -177,8 +256,10 @@ async function fetchPage(url) {
   }
 
   const response = await fetch(parsedUrl, {
+    redirect: 'follow',
     headers: {
-      Accept: 'text/html,application/xhtml+xml',
+      Accept: 'text/html,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
       'User-Agent': USER_AGENT,
     },
   });
